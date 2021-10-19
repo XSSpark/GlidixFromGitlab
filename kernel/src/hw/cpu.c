@@ -36,6 +36,7 @@
 #include <glidix/util/time.h>
 #include <glidix/util/log.h>
 #include <glidix/hw/idt.h>
+#include <glidix/hw/fpu.h>
 
 /**
  * In trampoline.asm: range of addresses where we have the real mode code for starting
@@ -243,6 +244,9 @@ noreturn void _cpuApEntry()
 	uint64_t *pml4 = (uint64_t*) 0xFFFFFFFFFFFFF000;
 	pml4[0] = 0;
 	pagetabReload();
+
+	// init the FPU
+	fpuInit();
 
 	// perform per-CPU initialization
 	int index;
