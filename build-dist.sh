@@ -74,6 +74,7 @@ mkdir build-sysroot || exit 1
 notify "Copying source code into image sysroot..."
 mkdir -p build-sysroot/usr/src || exit 1
 cp -RT "$srcdir" build-sysroot/usr/src || exit 1
+rm -rf build-sysroot/usr/src/.git || exit 1
 
 notify "Installing all packages in image sysroot..."
 (cd gxboot-build && DESTDIR=../build-sysroot make install) || exit 1
