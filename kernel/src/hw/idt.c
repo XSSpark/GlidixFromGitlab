@@ -318,6 +318,12 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 		timeIncrease(NANOS_PER_SEC/1000);
 		apic.eoi = 0;
 		__sync_synchronize();
+	}
+	else if (regs->intNo >= IRQ0 && regs->intNo <= IRQ15)
+	{
+		// miscellanous unhandled IRQs
+		apic.eoi = 0;
+		__sync_synchronize();
 	};
 };
 
