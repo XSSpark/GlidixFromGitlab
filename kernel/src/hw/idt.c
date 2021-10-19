@@ -37,6 +37,7 @@
 #include <glidix/util/time.h>
 #include <glidix/thread/sched.h>
 #include <glidix/hw/cpu.h>
+#include <glidix/hw/fpu.h>
 
 IDTEntry idt[256];
 IDTPointer idtPtr;
@@ -245,7 +246,7 @@ void idtReboot()
 	while (1) ASM("cli; hlt");
 };
 
-void isrHandler(Regs *regs)
+void isrHandler(Regs *regs, FPURegs *fpuregs)
 {
 	if (regs->intNo == I_PAGE_FAULT)
 	{

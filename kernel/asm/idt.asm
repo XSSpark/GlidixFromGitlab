@@ -54,16 +54,14 @@ isrCommon:
 	mov			rbx, rsp		; save the RSP (RBX is preserved, remember).
 	and			rsp, ~0xF		; align on 16-byte boundary.
 	
-	; make sure we can unwind the interrupt stack
-	; so we must push the return RIP onto the stack, and then push RBP,
-	; and finally set RBP to the new stack pointer, making it look like
-	; isrCommon was called directly by the interrupted state.
-	push			qword [rdi+0xA0]
-	push			rbp
-	mov			rbp, rsp
-	
+	sub			rsp, 512
+	fxsave			[rsp]			; save the FPURegs
+	mov			rsi, rsp		; pass FPURegs as second argument
+
 	cld						; clear direction flag as it's undefined
 	call	 		isrHandler
+
+	fxrstor			[rsp]			; restore the FPU regs
 	mov			rsp, rbx		; restore the real stack
 
 	popAll
