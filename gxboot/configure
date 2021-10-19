@@ -1,0 +1,103 @@
+#! /usr/bin/mbs
+/*
+	Glidix bootloader (gxboot)
+
+	Copyright (c) 2021, Madd Games.
+	All rights reserved.
+	
+	Redistribution and use in source and binary forms, with or without
+	modification, are permitted provided that the following conditions are met:
+	
+	* Redistributions of source code must retain the above copyright notice, this
+	  list of conditions and the following disclaimer.
+	
+	* Redistributions in binary form must reproduce the above copyright notice,
+	  this list of conditions and the following disclaimer in the documentation
+	  and/or other materials provided with the distribution.
+	
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+	AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+	IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+	FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+	DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+	CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+import stdopt;
+import cc;
+
+set gxboot_version = (mbs_release_version);
+print ('GXBoot version: ' gxboot_version);
+
+macro vbr_nasm_srcdir dirname fs_type
+{
+	// generate an ID
+	set id = (mbs_genid);
+	
+	// generate a variable inside the Makefile which stores the asm source file list,
+	// and then figures out .o files
+	makerule ('__' id '_SRC := $(subst \\,/,$(shell find ' dirname ' -name "*.asm"))');
+	makerule ('__' id '_OBJ := $(patsubst ' dirname '/%.asm, obj/' id '/%.o, $(__' id '_SRC))');
+	
+	// now for .o files
+	makerule ('obj/' id '/%.o: ' dirname '/%.asm obj/stub64.bin')
+		// first create the directory
+		('@"mkdir" -p $(shell dirname $@)')
+		
+		// now generate the object file
+		('nasm -felf32 $< -o $@ -D' fs_type)
+	;
+	
+	set cc_objs = (cc_objs ' $(__' id '_OBJ)');
+	
+	export cc_objs;
+};
+
+macro build_vbr fs_type
+{
+	// we need to disable SSE as it required initialization before it can be used
+	cc_append_cflags '-m32 -ffreestanding -fno-builtin -mno-sse -mno-sse2';
+	cc_append_ldflags ('-T ' mbs_srcdir '/vbr.ld -m32 -ffreestanding -nostdlib -lgcc');
+
+	cc_define (fs_type) '1';
+
+	makerule ('obj/stub64.bin: ' mbs_srcdir '/vbr/stub64.asmb')
+		('@"mkdir" -p $(shell dirname $@)')
+		('nasm -fbin ' mbs_srcdir '/vbr/stub64.asmb -o obj/stub64.bin')
+	;
+
+	vbr_nasm_srcdir (mbs_srcdir '/vbr') (fs_type);
+
+	cc_incdir (mbs_srcdir '/vbr');
+	cc_srcdir (mbs_srcdir '/vbr');
+
+	cc_link;
+};
+
+package 'gxboot' (gxboot_version)
+{
+	file ('/boot/gxboot/vbr-gxfs.bin')
+	{
+		build_vbr 'GXBOOT_FS_GXFS';
+	};
+
+	file ('/boot/gxboot/mbr.bin')
+	{
+		makerule (mbs_file ': ' mbs_srcdir '/mbr.asm')
+			('@"mkdir" -p $(shell dirname $@)')
+			('nasm -fbin -o $@ $<')
+		;
+	};
+
+	file ('/bin/gxboot-install' mbs_ext_bin)
+	{
+		cc_incdir (mbs_srcdir '/gxboot-install');
+		cc_srcdir (mbs_srcdir '/gxboot-install');
+
+		cc_link;
+	};
+};

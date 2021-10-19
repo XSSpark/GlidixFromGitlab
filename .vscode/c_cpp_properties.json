@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${default}",
+                "kernel/include",
+                "kernel/include/acpi"
+            ],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": [
+                "-D__KERNEL__",
+                "'-DKERNEL_VERSION=\"<KERNEL-VERSION>\"'",
+                "-std=gnu11",
+                "-Wall",
+                "-Werror"
+            ]
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,78 @@
+#! /usr/bin/mbs
+/*
+	Glidix kernel
+
+	Copyright (c) 2021, Madd Games.
+	All rights reserved.
+	
+	Redistribution and use in source and binary forms, with or without
+	modification, are permitted provided that the following conditions are met:
+	
+	* Redistributions of source code must retain the above copyright notice, this
+	  list of conditions and the following disclaimer.
+	
+	* Redistributions in binary form must reproduce the above copyright notice,
+	  this list of conditions and the following disclaimer in the documentation
+	  and/or other materials provided with the distribution.
+	
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+	AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+	IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+	DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+	FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+	DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+	SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+	CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+import stdopt;
+import cc;
+
+set kernel_version = (mbs_release_version);
+print ('Kernel version: ' kernel_version);
+
+macro nasm_srcdir dirname
+{
+	// generate an ID
+	set id = (mbs_genid);
+	
+	// generate a variable inside the Makefile which stores the asm source file list,
+	// and then figures out .o files
+	makerule ('__' id '_SRC := $(subst \\,/,$(shell find ' dirname ' -name "*.asm"))');
+	makerule ('__' id '_OBJ := $(patsubst ' dirname '/%.asm, obj/' id '/%.o, $(__' id '_SRC))');
+	
+	// now for .o files
+	makerule ('obj/' id '/%.o: ' dirname '/%.asm ' dirname '/regs.inc')
+		// first create the directory
+		('@"mkdir" -p $(shell dirname $@)')
+		
+		// now generate the object file
+		('nasm -felf64 $< -o $@ -i' mbs_srcdir '/asm/')
+	;
+	
+	set cc_objs = (cc_objs ' $(__' id '_OBJ)');
+	
+	export cc_objs;
+};
+
+package 'kernel' (kernel_version)
+{
+	file ('/boot/initrd-sysroot/kernel.so')
+	{
+		cc_define 'KERNEL_VERSION' ('"' kernel_version '"');
+		
+		cc_append_cflags '-ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -fno-common -fno-builtin -D__KERNEL__ -DCONFIG_ACPI';
+		cc_append_ldflags ('-T ' mbs_srcdir '/kernel.ld -ffreestanding -O2 -nostdlib -ggdb');
+		cc_append_libs ('-lgcc');
+
+		cc_incdir (mbs_srcdir '/include');
+		cc_incdir (mbs_srcdir '/include/acpi');
+
+		nasm_srcdir (mbs_srcdir '/asm');
+		cc_srcdir (mbs_srcdir '/src');
+
+		cc_link;
+	};
+};

@@ -1,0 +1,14 @@
+{
+	"files.associations": {
+		"time.h": "c",
+		"unistd.h": "c",
+		"string.h": "c",
+		"common.h": "c",
+		"random": "c",
+		"array": "c",
+		"hash_map": "c",
+		"string_view": "c",
+		"initializer_list": "c",
+		"utility": "c"
+	}
+}
