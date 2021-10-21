@@ -140,7 +140,7 @@ struct Runqueue_
  */
 typedef struct
 {
-	SpinIrqState irqState;			// IRQ state
+	IrqState irqState;			// IRQ state
 	KernelThreadFunc func;			// r15
 	void *param;				// r14
 	void *ignored[4];			// r13, r12, rbp, rbx

@@ -331,7 +331,7 @@ static void* _komAllocBlockFromPool(KOM_Pool *pool, int bucketIndex)
 
 void* komAllocBlock(int bucket, int allowedPools)
 {
-	SpinIrqState irqState = spinlockAcquire(&komLock);
+	IrqState irqState = spinlockAcquire(&komLock);
 	
 	int poolIndex;
 	for (poolIndex=0; poolIndex<KOM_NUM_POOLS; poolIndex++)
@@ -353,7 +353,7 @@ void* komAllocBlock(int bucket, int allowedPools)
 
 void komReleaseBlock(void *block, int bucket)
 {
-	SpinIrqState irqState = spinlockAcquire(&komLock);
+	IrqState irqState = spinlockAcquire(&komLock);
 	_komReleaseIntoPool(&komPools[KOM_POOL_UNUSED], (KOM_Header*) block, bucket);
 	spinlockRelease(&komLock, irqState);
 };
@@ -362,7 +362,7 @@ void* komAllocVirtual(size_t size)
 {
 	size = (size + 0xFFF) & ~0xFFFUL;
 	
-	SpinIrqState irqState = spinlockAcquire(&komLock);
+	IrqState irqState = spinlockAcquire(&komLock);
 	char *result = nextVirtualAddr;
 	nextVirtualAddr += size;
 	spinlockRelease(&komLock, irqState);

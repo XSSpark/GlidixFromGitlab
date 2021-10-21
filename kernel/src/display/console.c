@@ -156,7 +156,7 @@ void conWrite(const void *data, size_t size)
 {
 	const char *scan = (const char*) data;
 
-	SpinIrqState irqState = spinlockAcquire(&conLock);
+	IrqState irqState = spinlockAcquire(&conLock);
 	while (size--)
 	{
 		char c = *scan++;
@@ -207,7 +207,7 @@ void conWriteString(const char *str)
 
 void conRemapFramebuffers()
 {
-	SpinIrqState irqState = spinlockAcquire(&conLock);
+	IrqState irqState = spinlockAcquire(&conLock);
 
 	size_t fbSize = conScanlineSize * conPixelHeight;
 	size_t fbSizePages = (fbSize + 0xFFF) & ~0xFFFUL;

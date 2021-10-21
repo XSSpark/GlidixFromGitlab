@@ -26,31 +26,35 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __glidix_thread_spinlock_h
-#define	__glidix_thread_spinlock_h
+#ifndef __glidix_hw_irq_h
+#define	__glidix_hw_irq_h
 
 #include <glidix/util/common.h>
-#include <glidix/hw/irq.h>
 
 /**
- * Represents a spinlock. This is a low-level synchronisation primitive, which synchronises
- * access to a resource between CPU cores.
+ * `IrqState` when IRQs are enabled.
  */
-typedef struct
-{
-	int _;
-} Spinlock;
+#define	IRQ_STATE_ENABLED				(1 << 9)
 
 /**
- * Acquire a spinlock. This function disables interrupts, then loops until it can take the
- * spinlock. Returns the previous IRQ state, which must later be passed to `spinlockRelease()`.
+ * `IrqState` when IRQs are disabled.
  */
-IrqState spinlockAcquire(Spinlock *sl);
+#define	IRQ_STATE_DISABLED				0
 
 /**
- * Release a spinlock. This function must only be called by the thread which holds the spinlock
- * currently. The `irqState` is the value returned by `spinlockAcquire()` previously.
+ * Represents the state of IRQs.
  */
-void spinlockRelease(Spinlock *sl, IrqState irqState);
+typedef uint64_t IrqState;
+
+/**
+ * Disable IRQs, and return the old IRQ state.
+ */
+IrqState irqDisable();
+
+/**
+ * Restore IRQs to the specified state. Call this while IRQs are disabled
+ * only!
+ */
+void irqRestore(IrqState state);
 
 #endif

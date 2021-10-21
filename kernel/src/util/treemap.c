@@ -68,7 +68,7 @@ void* treemapGet(TreeMap *map, uint32_t index)
 	TreeMapNode *node = &map->masterNode;
 	index = __builtin_bswap32(index);
 
-	SpinIrqState irqState = spinlockAcquire(&map->lock);
+	IrqState irqState = spinlockAcquire(&map->lock);
 
 	int i;
 	for (i=0; i<TREEMAP_DEPTH; i++)
@@ -91,7 +91,7 @@ errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr)
 	TreeMapNode *node = &map->masterNode;
 	index = __builtin_bswap32(index);
 	
-	SpinIrqState irqState = spinlockAcquire(&map->lock);
+	IrqState irqState = spinlockAcquire(&map->lock);
 	
 	int i;
 	for (i=0; i<TREEMAP_DEPTH-1; i++)

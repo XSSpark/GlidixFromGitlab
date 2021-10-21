@@ -53,7 +53,7 @@ void timeIncrease(nanoseconds_t nanos)
 {
 	__sync_fetch_and_add(&uptime, nanos);
 
-	SpinIrqState irqState = spinlockAcquire(&timedLock);
+	IrqState irqState = spinlockAcquire(&timedLock);
 	while (timedHead != NULL && timedHead->deadline <= uptime)
 	{
 		TimedEvent *timed = timedHead;
@@ -69,7 +69,7 @@ void timeIncrease(nanoseconds_t nanos)
 void timedPost(TimedEvent *timed, nanoseconds_t deadline)
 {
 	Thread *me = schedGetCurrentThread();
-	SpinIrqState irqState = spinlockAcquire(&timedLock);
+	IrqState irqState = spinlockAcquire(&timedLock);
 
 	timed->deadline = deadline;
 	if (deadline <= uptime)
@@ -110,7 +110,7 @@ void timedPost(TimedEvent *timed, nanoseconds_t deadline)
 
 void timedCancel(TimedEvent *timed)
 {
-	SpinIrqState irqState = spinlockAcquire(&timedLock);
+	IrqState irqState = spinlockAcquire(&timedLock);
 
 	if (!timed->isCancelled)
 	{

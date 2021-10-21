@@ -76,7 +76,7 @@ extern char _schedThreadEntry[];
 /**
  * In sched.asm: get a 'save stack' and call `_schedNext()`.
  */
-void _schedYield(SpinIrqState irqState);
+void _schedYield(IrqState irqState);
 
 /**
  * In sched.asm: take a 'save stack' found by `_schedYield()`, and return
@@ -107,7 +107,7 @@ static void schedCleanup()
 {
 	while (1)
 	{
-		SpinIrqState irqState = spinlockAcquire(&schedLock);
+		IrqState irqState = spinlockAcquire(&schedLock);
 		
 		Thread *thread;
 		for (thread=schedDetHead; thread!=NULL; thread=thread->next)
@@ -179,7 +179,7 @@ void schedInitLocal()
 
 void schedSuspend()
 {
-	SpinIrqState irqState = spinlockAcquire(&schedLock);
+	IrqState irqState = spinlockAcquire(&schedLock);
 
 	CPU *cpu = cpuGetCurrent();
 	Thread *currentThread = cpu->currentThread;
@@ -298,7 +298,7 @@ static void _schedWake(Thread *thread)
 
 void schedWake(Thread *thread)
 {
-	SpinIrqState irqState = spinlockAcquire(&schedLock);
+	IrqState irqState = spinlockAcquire(&schedLock);
 	_schedWake(thread);
 	spinlockRelease(&schedLock, irqState);
 };
@@ -369,7 +369,7 @@ Thread* schedGetCurrentThread()
 
 void schedJoinKernelThread(Thread *thread)
 {
-	SpinIrqState irqState = spinlockAcquire(&schedLock);
+	IrqState irqState = spinlockAcquire(&schedLock);
 
 	while (thread->retstack != NULL)
 	{
@@ -386,7 +386,7 @@ void schedJoinKernelThread(Thread *thread)
 
 void schedDetachKernelThread(Thread *thread)
 {
-	SpinIrqState irqState = spinlockAcquire(&schedLock);
+	IrqState irqState = spinlockAcquire(&schedLock);
 
 	if (thread->retstack == NULL)
 	{
@@ -437,7 +437,7 @@ void schedInitTimer()
 
 void schedPreempt()
 {
-	SpinIrqState irqState = spinlockAcquire(&schedLock);
+	IrqState irqState = spinlockAcquire(&schedLock);
 
 	CPU *cpu = cpuGetCurrent();
 	if (cpu->currentThread != &cpu->idleThread)
