@@ -41,7 +41,6 @@
 
 IDTEntry idt[256];
 IDTPointer idtPtr;
-static IRQHandler irqHandlers[16];
 
 extern void loadIDT();
 extern void isr0();
@@ -232,8 +231,6 @@ void idtInit()
 	idtPtr.addr = (uint64_t) &idt[0];
 	idtPtr.limit = (sizeof(IDTEntry) * 256) - 1;
 	loadIDT();
-
-	memset(irqHandlers, 0, sizeof(IRQHandler)*16);
 };
 
 void idtReboot()
@@ -325,16 +322,4 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 		apic.eoi = 0;
 		__sync_synchronize();
 	};
-};
-
-IRQHandler registerIRQHandler(int irq, IRQHandler handler)
-{
-	if ((irq < 0) || (irq >= 16))
-	{
-		panic("invalid IRQ number (%d)! must be 0-15.\n", irq);
-	};
-	
-	IRQHandler old = irqHandlers[irq];
-	irqHandlers[irq] = handler;
-	return old;
 };
