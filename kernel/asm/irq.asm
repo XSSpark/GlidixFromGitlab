@@ -34,6 +34,7 @@ irqDisable:
 	pushf
 	pop rax
 	cli
+	and rax, (1 << 9)
 	ret
 
 irqRestore:
