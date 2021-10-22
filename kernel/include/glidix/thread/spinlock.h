@@ -42,6 +42,13 @@ typedef struct
 } Spinlock;
 
 /**
+ * Initialize a spinlock. This puts it in the 'unlocked' state, and must only be used when
+ * a spinlock needs to be initialized in allocated structure, and before any concurrency
+ * happens.
+ */
+void spinlockInit(Spinlock *sl);
+
+/**
  * Acquire a spinlock. This function disables interrupts, then loops until it can take the
  * spinlock. Returns the previous IRQ state, which must later be passed to `spinlockRelease()`.
  */

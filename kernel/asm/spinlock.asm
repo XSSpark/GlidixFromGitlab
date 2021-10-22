@@ -27,7 +27,14 @@
 section .text
 bits 64
 
+global spinlockInit
 global spinlockAcquire
+global spinlockRelease
+
+spinlockInit:
+	mov [rdi], dword 0
+	ret
+
 spinlockAcquire:
 	; get the IRQ state into RAX
 	pushf
@@ -46,7 +53,6 @@ spinlockAcquire:
 	; the IRQ state is in RAX so return
 	ret
 
-global spinlockRelease
 spinlockRelease:
 	; release the lock
 	xor eax, eax
