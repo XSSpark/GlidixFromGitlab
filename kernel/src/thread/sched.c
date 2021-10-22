@@ -461,3 +461,17 @@ void schedPreempt()
 
 	_schedYield(irqState);
 };
+
+int schedHaveReadySigs()
+{
+	Thread *me = schedGetCurrentThread();
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t pending = me->sigPending;
+	if (me->proc != NULL) pending |= me->proc->sigPending;
+
+	ksigset_t ready = pending & ~me->sigBlocked;
+	spinlockRelease(&schedLock, irqState);
+
+	return !!ready;
+};

@@ -31,6 +31,7 @@
 
 #include <glidix/util/common.h>
 #include <glidix/util/treemap.h>
+#include <glidix/thread/signal.h>
 
 /**
  * Time quantum in nanoseconds.
@@ -105,6 +106,21 @@ struct Thread_
 	 * The process we are inside of; or `NULL` if this is a kernel thread.
 	 */
 	Process *proc;
+
+	/**
+	 * Set of blocked signals for this thread (SIGKILL and SIGTERM are never set!).
+	 */
+	ksigset_t sigBlocked;
+
+	/**
+	 * Set of currently-pending signals for this thread.
+	 */
+	ksigset_t sigPending;
+
+	/**
+	 * For each pending signal, the signal information.
+	 */
+	ksiginfo_t sigInfo[SIG_NUM];
 };
 
 /**
@@ -123,6 +139,16 @@ struct Process_
 	 * used by the `getpid()` system call.
 	 */
 	pid_t pid;
+
+	/**
+	 * Set of pending signals for this process (will be dispatched to an arbitrary thread).
+	 */
+	ksigset_t sigPending;
+
+	/**
+	 * For each pending signal, the signal information.
+	 */
+	ksiginfo_t sigInfo[SIG_NUM];
 };
 
 /**
@@ -214,5 +240,11 @@ void schedInitTimer();
  * async-interrupt-safe.
  */
 void schedPreempt();
+
+/**
+ * Returns nonzero if there are signals ready to dispatch for the current thread/process
+ * (i.e. pending and not blocked).
+ */
+int schedHaveReadySigs();
 
 #endif
