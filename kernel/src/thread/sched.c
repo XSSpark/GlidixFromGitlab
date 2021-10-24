@@ -36,6 +36,7 @@
 #include <glidix/hw/apic.h>
 #include <glidix/hw/idt.h>
 #include <glidix/hw/pagetab.h>
+#include <glidix/hw/msr.h>
 
 /**
  * The global scheduler lock.
@@ -231,6 +232,9 @@ noreturn void _schedNext(void *stack)
 			{
 				pagetabGetCR3(cpu->kernelCR3);
 			};
+			
+			// set the FSBASE
+			wrmsr(MSR_FS_BASE, nextThread->fsbase);
 			
 			// release the schedLock, but keep interrupts disabled
 			spinlockRelease(&schedLock, 0);

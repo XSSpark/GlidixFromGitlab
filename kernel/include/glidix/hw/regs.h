@@ -33,7 +33,6 @@
 
 typedef struct
 {
-	uint64_t fsbase;
 	uint64_t ds;
 	uint64_t rdi;
 	uint64_t rsi;
