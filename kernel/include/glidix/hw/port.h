@@ -62,7 +62,7 @@ static inline void outw(uint16_t port, uint16_t value)
 	ASM ("outw %1, %0" : : "dN" (port), "a" (value));
 };
 
-static inline void outd(uint16_t port, uint16_t value)
+static inline void outd(uint16_t port, uint32_t value)
 {
 	ASM ("outl %1, %0" : : "dN" (port), "a" (value));
 };
