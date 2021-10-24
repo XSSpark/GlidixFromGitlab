@@ -39,6 +39,23 @@
 #define	KB_FEATURE_RSDP			(1 << 2)
 
 /**
+ * Define a kernel init action; syntax:
+ * 	KERNEL_INIT_ACTION(func, name, ...deps)
+ * Where `func` is a function taking no arguments and returning `void`, which will
+ * be called when this init action is ready;
+ * `name` is a string naming this init action (defined a macro of the format `KIA_*` to
+ * hold this name);
+ * All further arguments are names of init action which must execute before this one.
+ * 
+ * This macro is meant to be used in the global scope of a C file. It generates a
+ * `KernelInitAction` struct in the `.ka_list` section, and these are concatenated into
+ * a terminated array by `kernel.ld`. See there for more details.
+ */
+#define	KERNEL_INIT_ACTION(func, ...)\
+	const char *__kiaLinks##func[] = {__VA_ARGS__, NULL};\
+	SECTION(".kia_list") KernelInitAction __kia##func = {.initFunc = func, .links = __kiaLinks##func, .started = 0, .complete = 0}
+
+/**
  * An entry in the memory map passed by the bootloader.
  */
 typedef struct
@@ -97,9 +114,43 @@ typedef struct
 } KernelBootInfo;
 
 /**
+ * Entry in the kernel init action table.
+ */
+typedef struct
+{
+	/**
+	 * The function which will be called to perform this init task.
+	 */
+	void (*initFunc)();
+
+	/**
+	 * Link name table. The first entry is the name of this init action.
+	 * The following entries are names of init actions which this one depends
+	 * on, followed by NULL to indicate the end.
+	 */
+	const char **links;
+
+	/**
+	 * Initialized to 0, set to 1 when we begin the init process.
+	 */
+	int started;
+
+	/**
+	 * Initialized to 0, set to 1 when init has ended.
+	 */
+	int complete;
+} KernelInitAction;
+
+/**
  * Pointer to the kernel boot information structure.
  */
 extern KernelBootInfo *bootInfo;
+
+/**
+ * The array of kernel init actions; this is defined in `kernel.ld`, see there and the
+ * documentation of `KERNEL_INIT_ACTION` for an explanation of the magic.
+ */
+extern KernelInitAction kiaList[];
 
 /**
  * Kernel entry point. This function is called from the bootloader, and it must

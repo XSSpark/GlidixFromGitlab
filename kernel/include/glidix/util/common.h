@@ -44,6 +44,7 @@
 #define	hlt()					ASM ("hlt")
 #define	kalloca					__builtin_alloca
 #define	FORMAT(a, b, c)				__attribute__ ((format(a, b, c)))
+#define	SECTION(name)				__attribute__ ((section(name)))
 #define	noreturn				_Noreturn
 
 #ifndef	__SYSTYPES_DEFINED

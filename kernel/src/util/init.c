@@ -38,8 +38,61 @@
 #include <glidix/thread/sched.h>
 #include <glidix/hw/ioapic.h>
 #include <glidix/util/time.h>
+#include <glidix/util/string.h>
+#include <glidix/util/panic.h>
+
+/**
+ * The terminator of the kernel init action list, see `kernel.ld` for an
+ * explanation.
+ */
+SECTION(".kia_terminator") KernelInitAction __kia_terminator = {.initFunc = NULL};
 
 KernelBootInfo *bootInfo;
+
+/**
+ * Run a kernel init action with the specified name.
+ */
+static void kiaRun(const char *name)
+{
+	KernelInitAction *kia;
+	for (kia=kiaList; kia->initFunc!=NULL; kia++)
+	{
+		if (strcmp(kia->links[0], name) == 0)
+		{
+			break;
+		};
+	};
+
+	if (kia->initFunc == NULL)
+	{
+		panic("Failed to find kernel init action named `%s'", name);
+	};
+
+	if (kia->complete)
+	{
+		// already done
+		return;
+	};
+
+	if (kia->started)
+	{
+		panic("Dependency loop in kernel init actions!");
+	};
+
+	// announce that we've started, to detect dependency loops
+	kia->started = 1;
+
+	// run the dependent actions
+	int i;
+	for (i=1; kia->links[i]!=NULL; i++)
+	{
+		kiaRun(kia->links[i]);
+	};
+
+	// now announce and run this one
+	kprintf("Running kernel init action `%s'...\n", name);
+	kia->initFunc();
+};
 
 void kmain(KernelBootInfo *info)
 {
@@ -100,6 +153,14 @@ void kmain(KernelBootInfo *info)
 	// find out the number of CPUs
 	kprintf("Found %d CPUs, starting up AP cores...\n", cpuGetCount());
 	cpuStartAPs();
+
+	// run the kernel init actions
+	kprintf("Running kernel init actions...\n");
+	KernelInitAction *kia;
+	for (kia=kiaList; kia->initFunc!=NULL; kia++)
+	{
+		kiaRun(kia->links[0]);
+	};
 
 	// now yield to other threads
 	while (1)

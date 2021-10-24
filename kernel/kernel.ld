@@ -65,6 +65,13 @@ SECTIONS
 	{
 		data = .;
 		*(.data)
+
+		/* form the kernel init action array, with the terminator (placed in the .kia_terminator
+		  section by init.c) at the end; expect 'kiaList' as a symbol, declared in init.h */
+		. = ALIGN(8);
+		kiaList = .;
+		*(.kia_list)
+		*(.kia_terminator)
 	} :data
 	
 	.bss :
