@@ -24,27 +24,6 @@
 ;	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 ;	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-; macros for manipulating the Regs struct.
-%define	MSR_FS_BASE		0xC0000100
-
-; push the value of an MSR. Trashes RCX, RDX and RAX.
-%macro pushMSR 1
-	mov	rcx,	%1
-	rdmsr
-	shl	rdx,	32
-	or	rdx,	rax
-	push	rdx
-%endmacro
-
-; pop the value of an MSR.
-%macro popMSR 1
-	pop	rax
-	mov	rdx,	rax
-	shr	rdx,	32
-	mov	rcx,	%1
-	wrmsr
-%endmacro
-
 ; push all regs (except the ones pushed by IRET, and intNo/errCode)
 %macro pushAll 0
 	push	r15
@@ -64,12 +43,10 @@
 	push	rdi
 	mov	ax,	ds
 	push	rax
-	pushMSR	MSR_FS_BASE
 %endmacro
 
 ; same but reverse
 %macro popAll 0
-	popMSR	MSR_FS_BASE
 	pop	rax
 	mov	ds,	ax
 	mov	es,	ax

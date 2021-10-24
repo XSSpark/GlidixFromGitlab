@@ -121,6 +121,11 @@ struct Thread_
 	 * For each pending signal, the signal information.
 	 */
 	ksiginfo_t sigInfo[SIG_NUM];
+
+	/**
+	 * The value of MSBASE for this thread.
+	 */
+	uint64_t fsbase;
 };
 
 /**
