@@ -3,11 +3,10 @@
         {
             "name": "Linux",
             "includePath": [
-                "${default}",
                 "kernel/include",
                 "kernel/include/acpi"
             ],
-            "compilerPath": "/usr/bin/gcc",
+            "compilerPath": "/usr/bin/x86_64-glidix-gcc",
             "cStandard": "gnu11",
             "cppStandard": "gnu++14",
             "intelliSenseMode": "linux-gcc-x64",
@@ -16,6 +15,7 @@
                 "'-DKERNEL_VERSION=\"<KERNEL-VERSION>\"'",
                 "-std=gnu11",
                 "-Wall",
+                "-D__glidix__",
                 "-Werror"
             ]
         }
