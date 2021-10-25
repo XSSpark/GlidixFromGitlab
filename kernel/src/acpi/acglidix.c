@@ -41,6 +41,7 @@
 #include <glidix/util/init.h>
 #include <glidix/util/panic.h>
 #include <glidix/thread/spinlock.h>
+#include <glidix/util/log.h>
 
 /**
  * Implements the ACPICA Operating System Layer (OSL) functions.
@@ -288,7 +289,7 @@ ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE sem, UINT32 units, UINT16 timeout
 		nanoTimeout = (uint64_t) timeout * 1000000;
 	};
 	
-	uint64_t deadline = getNanotime() + nanoTimeout;
+	uint64_t deadline = timeGetUptime() + nanoTimeout;
 	int acquiredSoFar = 0;
 	
 	while (count > 0)
@@ -303,7 +304,7 @@ ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE sem, UINT32 units, UINT16 timeout
 		acquiredSoFar += got;
 		count -= got;
 		
-		uint64_t now = getNanotime();
+		uint64_t now = timeGetUptime();
 		if (now < deadline)
 		{
 			nanoTimeout = deadline - now;
@@ -457,21 +458,10 @@ ACPI_STATUS AcpiOsWritePciConfiguration(ACPI_PCI_ID *id, UINT32 reg, UINT64 valu
 	return AE_OK;
 };
 
-static void* AcpiIntContexts[16];
-static ACPI_OSD_HANDLER AcpiIntHandlers[16];
-
-void AcpiOsGenericInt(int irq)
-{
-	TRACE();
-	AcpiIntHandlers[irq](AcpiIntContexts[irq]);
-};
-
 ACPI_STATUS AcpiOsInstallInterruptHandler(UINT32 irq, ACPI_OSD_HANDLER handler, void *context)
 {
 	TRACE();
-	AcpiIntContexts[irq] = context;
-	AcpiIntHandlers[irq] = handler;
-	registerIRQHandler(irq, AcpiOsGenericInt);
+	idtRegisterHandler(IRQ0+irq, (InterruptHandler) handler, context);
 	return AE_OK;
 };
 
@@ -483,140 +473,16 @@ ACPI_STATUS AcpiOsRemoveInterruptHandler(UINT32 intno, ACPI_OSD_HANDLER handler)
 	return AE_OK;
 };
 
-static void splitPageIndex(uint64_t index, uint64_t *dirIndex, uint64_t *tableIndex, uint64_t *pageIndex)
-{
-	*pageIndex = (index & 0x1FF);
-	index >>= 9;
-	*tableIndex = (index & 0x1FF);
-	index >>= 9;
-	*dirIndex = (index & 0x1FF);
-};
-
-static PTe *acgetPage(uint64_t index)
-{
-	uint64_t dirIndex, tableIndex, pageIndex;
-	splitPageIndex(index, &dirIndex, &tableIndex, &pageIndex);
-	uint64_t base = 0xFFFF830000000000;
-
-	int makeDir=0, makeTable=0;
-
-	PDPT *pdpt = (PDPT*) (base + 0x7FFFFFF000);
-	if (!pdpt->entries[dirIndex].present)
-	{
-		pdpt->entries[dirIndex].present = 1;
-		uint64_t frame = phmAllocFrame();
-		pdpt->entries[dirIndex].pdPhysAddr = frame;
-		pdpt->entries[dirIndex].rw = 1;
-		refreshAddrSpace();
-		makeDir = 1;
-	};
-
-	PD *pd = (PD*) (base + 0x7FFFE00000 + dirIndex * 0x1000);
-	if (makeDir) memset(pd, 0, 0x1000);
-	if (!pd->entries[tableIndex].present)
-	{
-		pd->entries[tableIndex].present = 1;
-		uint64_t frame = phmAllocFrame();
-		pd->entries[tableIndex].ptPhysAddr = frame;
-		pd->entries[tableIndex].rw = 1;
-		refreshAddrSpace();
-		makeTable = 1;
-	};
-
-	PT *pt = (PT*) (base + 0x7FC0000000 + dirIndex * 0x200000 + tableIndex * 0x1000);
-	if (makeTable) memset(pt, 0, 0x1000);
-	return &pt->entries[pageIndex];
-};
-
 void *AcpiOsMapMemory(ACPI_PHYSICAL_ADDRESS phaddr, ACPI_SIZE len)
 {
 	TRACE();
-	mutexLock(&acpiMemoryLock);
-	uint64_t startPhys = phaddr >> 12;
-	uint64_t endPhys = (phaddr+len) >> 12;
-	uint64_t outAddr = 0xFFFF830000000000 + nextFreePage * 0x1000 + (phaddr & 0xFFF);
-	uint64_t frame;
-	
-	for (frame=startPhys; frame<=endPhys; frame++)
-	{
-		PTe *pte = acgetPage(nextFreePage++);
-		pte->present = 1;
-		pte->framePhysAddr = frame;
-		pte->pcd = 1;
-		pte->rw = 1;
-	};
-	
-	refreshAddrSpace();
-	mutexUnlock(&acpiMemoryLock);
-	return (void*) outAddr;
-};
-
-void* mapPhysMemoryList(uint64_t *frames, uint64_t numFrames)
-{
-	mutexLock(&acpiMemoryLock);
-	uint64_t outAddr = 0xFFFF830000000000 + nextFreePage * 0x1000;
-	
-	int i;
-	for (i=0; i<numFrames; i++)
-	{
-		PTe *pte = acgetPage(nextFreePage++);
-		pte->present = 1;
-		pte->framePhysAddr = frames[i];
-		pte->pcd = 1;
-		pte->rw = 1;
-	};
-	
-	refreshAddrSpace();
-	mutexUnlock(&acpiMemoryLock);
-	return (void*) outAddr;
+	return pagetabMapPhys(phaddr, len, PT_WRITE | PT_NOEXEC);
 };
 
 void AcpiOsUnmapMemory(void *laddr, ACPI_SIZE len)
 {
 	TRACE();
-	mutexLock(&acpiMemoryLock);
-	uint64_t startLog = ((uint64_t)laddr-0xFFFF830000000000) >> 12;
-	uint64_t endLog = ((uint64_t)laddr-0xFFFF830000000000+len) >> 12;
-	uint64_t idx;
-	
-	for (idx=startLog; idx<=endLog; idx++)
-	{
-		PTe *pte = acgetPage(idx);
-		pte->present = 0;
-		pte->framePhysAddr = 0;
-	};
-	
-	refreshAddrSpace();
-	mutexUnlock(&acpiMemoryLock);
-};
-
-void unmapPhysMemoryAndGet(const volatile void *laddr, uint64_t len, uint64_t *framesOut)
-{
-	mutexLock(&acpiMemoryLock);
-	uint64_t startLog = ((uint64_t)laddr-0xFFFF830000000000) >> 12;
-	uint64_t endLog = ((uint64_t)laddr-0xFFFF830000000000+len) >> 12;
-	uint64_t idx;
-	
-	for (idx=startLog; idx<=endLog; idx++)
-	{
-		PTe *pte = acgetPage(idx);
-		*framesOut++ = pte->framePhysAddr;
-		pte->present = 0;
-		pte->framePhysAddr = 0;
-	};
-	
-	refreshAddrSpace();
-	mutexUnlock(&acpiMemoryLock);
-};
-
-void* mapPhysMemory(uint64_t phaddr, uint64_t len)
-{
-	return AcpiOsMapMemory(phaddr, len);
-};
-
-void unmapPhysMemory(const volatile void *laddr, uint64_t len)
-{
-	AcpiOsUnmapMemory((void*)laddr, len);
+	// TODO
 };
 
 ACPI_STATUS AcpiOsCreateMutex(ACPI_MUTEX *out)
