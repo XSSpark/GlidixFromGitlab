@@ -63,7 +63,7 @@ package 'kernel' (kernel_version)
 	{
 		cc_define 'KERNEL_VERSION' ('"' kernel_version '"');
 		
-		cc_append_cflags '-ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -fno-common -fno-builtin -D__KERNEL__ -DCONFIG_ACPI';
+		cc_append_cflags '-ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -fno-common -fno-builtin -fno-strict-aliasing -D__KERNEL__ -DCONFIG_ACPI';
 		cc_append_ldflags ('-T ' mbs_srcdir '/kernel.ld -ffreestanding -O2 -nostdlib -ggdb');
 		cc_append_libs ('-lgcc');
 

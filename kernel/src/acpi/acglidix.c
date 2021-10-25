@@ -38,6 +38,9 @@
 #include <glidix/hw/pagetab.h>
 #include <glidix/hw/idt.h>
 #include <glidix/thread/mutex.h>
+#include <glidix/util/init.h>
+#include <glidix/util/panic.h>
+#include <glidix/thread/spinlock.h>
 
 /**
  * Implements the ACPICA Operating System Layer (OSL) functions.
@@ -46,9 +49,15 @@
 //#define	TRACE()			kprintf("[ACGLIDIX] %s\n", __func__);
 #define	TRACE()
 
-static PAGE_ALIGN PDPT pdptAcpi;
-static uint64_t nextFreePage = 0;
-static Mutex acpiMemoryLock;
+/**
+ * Single page, used for reading/writing physical memory.
+ */
+static ALIGN(PAGE_SIZE) char acpiTransferPage[PAGE_SIZE];
+
+/**
+ * Lock for the transfer page.
+ */
+static Mutex acpiTransferLock;
 
 void* AcpiOsAllocate(ACPI_SIZE size)
 {
@@ -78,15 +87,13 @@ void AcpiOsPrintf(const char *fmt, ...)
 void AcpiOsSleep(UINT64 ms)
 {
 	TRACE();
-	sleep(ms);
+	timeSleep(TIME_MILLI(ms));
 };
 
 ACPI_PHYSICAL_ADDRESS AcpiOsGetRootPointer()
 {
 	TRACE();
-	ACPI_SIZE Ret;
-	AcpiFindRootPointer(&Ret);
-	return Ret;
+	return bootInfo->rsdpPhys;
 };
 
 ACPI_STATUS AcpiOsWritePort(ACPI_IO_ADDRESS port, UINT32 value, UINT32 width)
@@ -132,23 +139,40 @@ void AcpiOsStall(UINT32 ms)
 {
 	// microseconds for some reason
 	TRACE();
-	int then = getUptime() + (ms/1000 + 1);
-	while (getUptime() < then);
+	int then = timeGetUptime() + (ms/1000 + 1);
+	while (timeGetUptime() < then);
 };
 
 ACPI_STATUS AcpiOsReadMemory(ACPI_PHYSICAL_ADDRESS addr, UINT64 *value, UINT32 width)
 {
 	TRACE();
 	*value = 0;
-	size_t len = (size_t)width / 8;
-	pmem_read(value, (uint64_t) addr, len);
+
+	mutexLock(&acpiTransferLock);
+	if (pagetabMapKernel(acpiTransferPage, addr & ~0xFFFUL, PAGE_SIZE, PT_WRITE | PT_NOEXEC | PT_NOCACHE) != 0)
+	{
+		panic("Failed to map the transfer page for AcpiOsReadMemory()!");
+	};
+
+	memcpy(value, acpiTransferPage + (addr & 0xFFF), width/8);
+	mutexUnlock(&acpiTransferLock);
+
 	return AE_OK;
 };
 
 ACPI_STATUS AcpiOsWriteMemory(ACPI_PHYSICAL_ADDRESS addr, UINT64 value, UINT32 width)
 {
-	size_t len = (size_t)width / 8;
-	pmem_write((uint64_t) addr, &value, len);
+	TRACE();
+
+	mutexLock(&acpiTransferLock);
+	if (pagetabMapKernel(acpiTransferPage, addr & ~0xFFFUL, PAGE_SIZE, PT_WRITE | PT_NOEXEC | PT_NOCACHE) != 0)
+	{
+		panic("Failed to map the transfer page for AcpiOsReadMemory()!");
+	};
+
+	memcpy(acpiTransferPage + (addr & 0xFFF), &value, width/8);
+	mutexUnlock(&acpiTransferLock);
+
 	return AE_OK;
 };
 
@@ -168,7 +192,7 @@ ACPI_STATUS AcpiOsCreateLock(ACPI_SPINLOCK *spinlock)
 	 * also fragment the kernel heap. Perhaps we should have a function for such "microallocations"?
 	 */
 	*spinlock = (Spinlock*) kmalloc(sizeof(Spinlock));
-	spinlockRelease(*spinlock);
+	spinlockInit(*spinlock);
 	return AE_OK;
 };
 
@@ -181,17 +205,13 @@ void AcpiOsDeleteLock(ACPI_SPINLOCK spinlock)
 ACPI_CPU_FLAGS AcpiOsAcquireLock(ACPI_SPINLOCK spinlock)
 {
 	TRACE();
-	cli();
-	spinlockAcquire(spinlock);
-	return 0;
+	return spinlockAcquire(spinlock);
 };
 
 void AcpiOsReleaseLock(ACPI_SPINLOCK spinlock, ACPI_CPU_FLAGS flags)
 {
 	TRACE();
-	(void)flags;
-	spinlockRelease(spinlock);
-	sti();
+	spinlockRelease(spinlock, flags);
 };
 
 BOOLEAN AcpiOsReadable(void *mem, ACPI_SIZE size)
@@ -204,13 +224,13 @@ BOOLEAN AcpiOsReadable(void *mem, ACPI_SIZE size)
 ACPI_THREAD_ID AcpiOsGetThreadId()
 {
 	TRACE();
-	return (ACPI_THREAD_ID) getCurrentThread();
+	return (ACPI_THREAD_ID) schedGetCurrentThread();
 };
 
 UINT64 AcpiOsGetTimer()
 {
 	TRACE();
-	return getNanotime() / 100;
+	return timeGetUptime() / 1000;		// microseconds
 };
 
 ACPI_STATUS AcpiOsCreateSemaphore(UINT32 maxUnits, UINT32 initUnits, ACPI_SEMAPHORE *semptr)
@@ -238,19 +258,6 @@ ACPI_STATUS AcpiOsDeleteSemaphore(ACPI_SEMAPHORE sem)
 ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE sem, UINT32 units, UINT16 timeout)
 {
 	TRACE();
-	//kprintf("AcpiOsWaitSemaphore(%p, %u, %hu)\n", sem, units, timeout);
-	//stackTraceHere();
-	/*
-	if (sem == (void*)0xFFFF810000290E80)
-	{
-		kprintf("Semaphore %p waited by %p\n", sem, getCurrentThread());
-		stackTraceHere();
-		
-		//uint64_t sleepUntil = getNanotime() + NT_SECS(2);
-		//while (getNanotime() < sleepUntil);
-	};*/
-	
-	
 	int count = (int) units;
 	if (sem == NULL)
 	{
@@ -314,11 +321,6 @@ ACPI_STATUS AcpiOsWaitSemaphore(ACPI_SEMAPHORE sem, UINT32 units, UINT16 timeout
 ACPI_STATUS AcpiOsSignalSemaphore(ACPI_SEMAPHORE sem, UINT32 units)
 {
 	TRACE();
-	//if (sem == (void*)0xFFFF810000290E80)
-	//{
-	//	kprintf("Semaphore %p signalled by %p\n", sem, getCurrentThread());
-	//};
-	
 	if (sem == NULL)
 	{
 		return AE_BAD_PARAMETER;
@@ -362,27 +364,19 @@ ACPI_STATUS AcpiOsExecute(ACPI_EXECUTE_TYPE type, ACPI_OSD_EXEC_CALLBACK func, v
 	// coincidently, ACPICA uses the same type of callback function as CreateKernelThread
 	(void)type;
 	if (func == NULL) return AE_BAD_PARAMETER;
-	KernelThreadParams pars;
-	memset(&pars, 0, sizeof(KernelThreadParams));
-	pars.stackSize = DEFAULT_STACK_SIZE;
-	pars.name = "ACPICA thread";
-	CreateKernelThread(func, &pars, ctx);
+	Thread *thread = schedCreateKernelThread(func, ctx, NULL);
+	if (thread == NULL)
+	{
+		return AE_STACK_OVERFLOW;
+	};
+
+	schedDetachKernelThread(thread);
 	return AE_OK;
 };
 
 ACPI_STATUS AcpiOsInitialize()
 {
 	TRACE();
-	memset(&pdptAcpi, 0, sizeof(PDPT));
-	pdptAcpi.entries[511].present = 1;
-	pdptAcpi.entries[511].rw = 1;
-	pdptAcpi.entries[511].pdPhysAddr = VIRT_TO_FRAME(&pdptAcpi);
-	PML4 *pml4 = getPML4();
-	pml4->entries[262].present = 1;
-	pml4->entries[262].rw = 1;
-	pml4->entries[262].pdptPhysAddr = VIRT_TO_FRAME(&pdptAcpi);
-	refreshAddrSpace();
-	mutexInit(&acpiMemoryLock);
 	return AE_OK;
 };
 
@@ -425,10 +419,14 @@ ACPI_STATUS AcpiOsReadPciConfiguration(ACPI_PCI_ID *id, UINT32 reg, UINT64 *valu
 	uint32_t offsetIntoReg = reg & 3;
 	uint32_t addr = (id->Bus << 16) | (id->Device << 11) | (id->Function << 8) | (1 << 31) | regAligned;
 	
-	outd(PCI_CONFIG_ADDR, addr);
-	uint32_t regval = ind(PCI_CONFIG_DATA);
+	union
+	{
+		uint32_t regval;
+		char bytes[4];
+	} regu;
+	regu.regval = pciReadConfigReg(addr);
 	
-	char *fieldptr = (char*) &regval + offsetIntoReg;
+	char *fieldptr = regu.bytes + offsetIntoReg;
 	size_t count = width/8;	
 	*value = 0;
 	memcpy(value, fieldptr, count);
@@ -442,17 +440,19 @@ ACPI_STATUS AcpiOsWritePciConfiguration(ACPI_PCI_ID *id, UINT32 reg, UINT64 valu
 	uint32_t offsetIntoReg = reg & 3;
 	uint32_t addr = (id->Bus << 16) | (id->Device << 11) | (id->Function << 8) | (1 << 31) | regAligned;
 	
-	outd(PCI_CONFIG_ADDR, addr);
-	uint32_t regval = ind(PCI_CONFIG_DATA);
+	union
+	{
+		uint32_t regval;
+		char bytes[4];
+	} regu;
+
+	regu.regval = pciReadConfigReg(addr);
 	
-	char *fieldptr = (char*) &regval + offsetIntoReg;
-	size_t count = width/8;	
-	//*value = 0;
-	//memcpy(value, fieldptr, count);
+	char *fieldptr = regu.bytes + offsetIntoReg;
+	size_t count = width/8;
 	memcpy(fieldptr, &value, count);
 	
-	outd(PCI_CONFIG_ADDR, addr);
-	outd(PCI_CONFIG_DATA, regval);
+	pciWriteConfigReg(addr, regu.regval);
 	
 	return AE_OK;
 };

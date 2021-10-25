@@ -9,6 +9,8 @@
 		"hash_map": "c",
 		"string_view": "c",
 		"initializer_list": "c",
-		"utility": "c"
+		"utility": "c",
+		"acpi.h": "c",
+		"acenvex.h": "c"
 	}
 }
