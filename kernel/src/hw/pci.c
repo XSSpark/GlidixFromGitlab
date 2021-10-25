@@ -29,6 +29,8 @@
 #include <glidix/hw/pci.h>
 #include <glidix/hw/port.h>
 #include <glidix/thread/mutex.h>
+#include <glidix/util/init.h>
+#include <glidix/hw/acpi.h>
 
 /**
  * The lock which controls access to PCI shared structures and 
@@ -52,3 +54,10 @@ void pciWriteConfigReg(uint32_t addr, uint32_t value)
 	outd(PCI_CONFIG_DATA, value);
 	mutexUnlock(&pciLock);
 };
+
+static void _pciEnumDevices()
+{
+
+};
+
+KERNEL_INIT_ACTION(_pciEnumDevices, KIA_PCI_ENUM_DEVICES, KIA_ACPI_INIT);

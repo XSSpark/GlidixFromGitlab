@@ -54,6 +54,8 @@ KernelBootInfo *bootInfo;
  */
 static void kiaRun(const char *name)
 {
+	kprintf("Trying to execute %s...\n", name);
+
 	KernelInitAction *kia;
 	for (kia=kiaList; kia->initFunc!=NULL; kia++)
 	{
@@ -92,6 +94,9 @@ static void kiaRun(const char *name)
 	// now announce and run this one
 	kprintf("Running kernel init action `%s'...\n", name);
 	kia->initFunc();
+
+	// complete now
+	kia->complete = 1;
 };
 
 void kmain(KernelBootInfo *info)
@@ -161,6 +166,8 @@ void kmain(KernelBootInfo *info)
 	{
 		kiaRun(kia->links[0]);
 	};
+
+	kprintf("Kernel init done.\n");
 
 	// now yield to other threads
 	while (1)

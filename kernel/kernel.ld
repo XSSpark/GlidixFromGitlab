@@ -68,7 +68,7 @@ SECTIONS
 
 		/* form the kernel init action array, with the terminator (placed in the .kia_terminator
 		  section by init.c) at the end; expect 'kiaList' as a symbol, declared in init.h */
-		. = ALIGN(8);
+		. = ALIGN(32);		/* the sections are forcibly aligned to 32 bytes for some reason, avoid padding */
 		kiaList = .;
 		*(.kia_list)
 		*(.kia_terminator)

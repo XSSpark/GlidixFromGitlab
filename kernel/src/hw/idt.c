@@ -340,10 +340,6 @@ void idtRegisterHandler(int intNo, InterruptHandler handler, void *ctx)
 	};
 
 	IrqState irqState = irqDisable();
-	if (intHandlers[intNo] != NULL)
-	{
-		panic("Multiple handlers requested for interrupt %d!", intNo);
-	};
 
 	intHandlers[intNo] = handler;
 	intHandlerCtx[intNo] = ctx;

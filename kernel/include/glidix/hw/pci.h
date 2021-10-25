@@ -32,6 +32,11 @@
 #include <glidix/util/common.h>
 
 /**
+ * PCI device enumeration init action name.
+ */
+#define	KIA_PCI_ENUM_DEVICES				"pciEnumDevices"
+
+/**
  * The PCI config address port number.
  */
 #define	PCI_CONFIG_ADDR					0xCF8

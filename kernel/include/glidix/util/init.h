@@ -139,6 +139,9 @@ typedef struct
 	 * Initialized to 0, set to 1 when init has ended.
 	 */
 	int complete;
+
+	// make this a multiple of 16 bytes
+	uint64_t ignore;
 } KernelInitAction;
 
 /**
