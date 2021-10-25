@@ -115,7 +115,24 @@ typedef struct
 	uint32_t reserved;
 } PACKED IDTEntry;
 
+/**
+ * Interrupt handler function pointer type.
+ */
+typedef void (*InterruptHandler)(void *ctx);
+
+/**
+ * Initialize the IDT.
+ */
 void idtInit();
-void idtReboot();
+
+/**
+ * Perform a reboot via broken IDT and triple fault.
+ */
+noreturn void idtReboot();
+
+/**
+ * Register an interrupt handler.
+ */
+void idtRegisterHandler(int intNo, InterruptHandler handler, void *ctx);
 
 #endif
