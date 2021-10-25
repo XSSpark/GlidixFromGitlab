@@ -38,9 +38,13 @@
 #include <glidix/thread/sched.h>
 #include <glidix/hw/cpu.h>
 #include <glidix/hw/fpu.h>
+#include <glidix/hw/idt.h>
 
 IDTEntry idt[256];
 IDTPointer idtPtr;
+
+static InterruptHandler intHandlers[256];
+static void* intHandlerCtx[256];
 
 extern void loadIDT();
 extern void isr0();
@@ -233,7 +237,7 @@ void idtInit()
 	loadIDT();
 };
 
-void idtReboot()
+noreturn void idtReboot()
 {
 	cli();
 	idtPtr.addr = 0;
@@ -320,6 +324,29 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	{
 		// miscellanous unhandled IRQs
 		apic.eoi = 0;
+		if (intHandlers[regs->intNo] != NULL)
+		{
+			intHandlers[regs->intNo](intHandlerCtx[regs->intNo]);
+		};
 		__sync_synchronize();
 	};
+};
+
+void idtRegisterHandler(int intNo, InterruptHandler handler, void *ctx)
+{
+	if (intNo < 0 || intNo > 255)
+	{
+		panic("Invalid interrupt number passed to idtRegisterHandler: %d", intNo);
+	};
+
+	IrqState irqState = irqDisable();
+	if (intHandlers[intNo] != NULL)
+	{
+		panic("Multiple handlers requested for interrupt %d!", intNo);
+	};
+
+	intHandlers[intNo] = handler;
+	intHandlerCtx[intNo] = ctx;
+
+	irqRestore(irqState);
 };
