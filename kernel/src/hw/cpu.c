@@ -288,3 +288,8 @@ int cpuGetMyIndex()
 
 	return i;
 };
+
+CPU* cpuGetIndex(int index)
+{
+	return &cpuList[index];
+};

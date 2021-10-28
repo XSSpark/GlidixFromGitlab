@@ -211,4 +211,9 @@ void cpuWake(int index);
  */
 int cpuGetMyIndex();
 
+/**
+ * Get the CPU with the specified index.
+ */
+CPU* cpuGetIndex(int index);
+
 #endif

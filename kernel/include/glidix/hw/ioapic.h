@@ -78,7 +78,7 @@
  * Pin polarity.
  */
 #define	IOAPIC_POLARITY_ACTIVE_HIGH		0
-#define	IOAPIC_POLAIRTY_ACTIVE_LOW		1
+#define	IOAPIC_POLARITY_ACTIVE_LOW		1
 
 /**
  * LAPIC entry flags.
@@ -240,9 +240,15 @@ typedef struct
 	uint8_t					id;
 	uint32_t				flags;
 } PACKED MADTRecord_LAPIC;
+
 /**
  * Initialize all the I/O APICs.
  */
 void ioapicInit();
+
+/**
+ * Map an IOAPIC interrupt number to a specific interrupt vector.
+ */
+void ioapicMap(int sysint, uint8_t vector, int polarity, int triggerMode);
 
 #endif

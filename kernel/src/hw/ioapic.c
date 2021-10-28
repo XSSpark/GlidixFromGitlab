@@ -49,6 +49,11 @@ static IOAPIC *ioapicHead;
 static InterruptOverride isaIntOvr[16];
 
 /**
+ * Lock controlling access to the IOAPIC regs.
+ */
+static Spinlock ioapicLock;
+
+/**
  * Read an I/O APIC register.
  */
 static uint32_t ioapicRead(IOAPIC *ioapic, uint32_t regno)
@@ -198,6 +203,33 @@ static IOAPIC *ioapicGetForInt(uint32_t sysint)
 	return ioapic;
 };
 
+void ioapicMap(int sysint, uint8_t vector, int polarity, int triggerMode)
+{
+	IrqState irqState = spinlockAcquire(&ioapicLock);
+
+	IOAPIC *ioapic = ioapicGetForInt(sysint);
+	if (ioapic == NULL)
+	{
+		panic("No I/O APIC for system interrupt %u!\n", sysint);
+	};
+
+	uint32_t intOffset = sysint - ioapic->intbase;
+
+	IOAPICRedir redir;
+	redir.lowerDword = redir.upperDword = 0;
+	redir.vector = vector;
+	redir.delvMode = IOAPIC_DELV_MODE_FIXED;
+	redir.destMode = IOAPIC_DEST_MODE_PHYSICAL;
+	redir.pinPolarity = polarity;
+	redir.triggerMode = triggerMode;
+	redir.destination = cpuGetIndex(0)->apicID;
+
+	ioapicWrite(ioapic, IOAPICREDTBL(intOffset), redir.lowerDword);
+	ioapicWrite(ioapic, IOAPICREDTBL(intOffset)+1, redir.upperDword);
+
+	spinlockRelease(&ioapicLock, irqState);
+};
+
 void ioapicInit()
 {
 	if ((bootInfo->features & KB_FEATURE_RSDP) == 0)
@@ -280,7 +312,7 @@ void ioapicInit()
 			i, ovr->sysint,
 			ovr->flags & IOAPIC_INTFLAGS_LOW ? "low" : "high",
 			ovr->flags & IOAPIC_INTFLAGS_LEVEL ? "level" : "edge");
-		
+
 		IOAPIC *ioapic = ioapicGetForInt(ovr->sysint);
 		if (ioapic == NULL)
 		{
@@ -294,7 +326,7 @@ void ioapicInit()
 		redir.vector = IRQ0 + i;
 		redir.delvMode = IOAPIC_DELV_MODE_FIXED;
 		redir.destMode = IOAPIC_DEST_MODE_PHYSICAL;
-		if (ovr->flags & IOAPIC_INTFLAGS_LOW) redir.pinPolarity = IOAPIC_POLAIRTY_ACTIVE_LOW;
+		if (ovr->flags & IOAPIC_INTFLAGS_LOW) redir.pinPolarity = IOAPIC_POLARITY_ACTIVE_LOW;
 		if (ovr->flags & IOAPIC_INTFLAGS_LEVEL) redir.triggerMode = IOAPIC_TRIGGER_MODE_LEVEL;
 		redir.destination = apic.id >> 24;
 
