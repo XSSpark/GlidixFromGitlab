@@ -11,6 +11,7 @@
 		"initializer_list": "c",
 		"utility": "c",
 		"acpi.h": "c",
-		"acenvex.h": "c"
+		"acenvex.h": "c",
+		"log.h": "c"
 	}
 }

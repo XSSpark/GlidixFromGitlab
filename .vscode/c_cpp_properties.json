@@ -16,7 +16,8 @@
                 "-std=gnu11",
                 "-Wall",
                 "-D__glidix__",
-                "-Werror"
+                "-Werror",
+                "-O3"
             ]
         }
     ],

@@ -26,42 +26,56 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __glidix_util_common_h
-#define	__glidix_util_common_h
+#include <glidix/fs/file.h>
+#include <glidix/util/memory.h>
+#include <glidix/util/string.h>
 
-// ALL freestanding headers used by the kernel should be included from here,
-// and other parts of the kernel should only use them via this header, for
-// abstraction purposes.
-#include <stdint.h>
-#include <stddef.h>
-#include <stdarg.h>
+File* vfsOpenInode(Inode *inode, int oflags, errno_t *err)
+{
+	int rights = 0;
+	if ((oflags & O_RDWR) == O_RDWR) rights = VFS_ACCESS_WRITE | VFS_ACCESS_READ;
+	else if (oflags & O_RDONLY) rights = VFS_ACCESS_READ;
+	else if (oflags & O_WRONLY) rights = VFS_ACCESS_WRITE;
+	else
+	{
+		if (err != NULL) *err = EINVAL;
+		return NULL;
+	};
 
-#define	ASM					__asm__ __volatile__
-#define	ALIGN(n)				__attribute__ ((aligned(n)))
-#define	PACKED					__attribute__ ((packed))
-#define	cli()					ASM ("cli")
-#define	sti()					ASM ("sti")
-#define	hlt()					ASM ("hlt")
-#define	kalloca					__builtin_alloca
-#define	FORMAT(a, b, c)				__attribute__ ((format(a, b, c)))
-#define	SECTION(name)				__attribute__ ((section(name)))
-#define	noreturn				_Noreturn
+	if (!vfsInodeAccess(inode, rights))
+	{
+		if (err != NULL) *err = EACCES;
+		return NULL;
+	};
 
-#ifndef	__SYSTYPES_DEFINED
-#define	__SYSTYPES_DEFINED
-typedef	uint64_t				dev_t;
-typedef	uint64_t				ino_t;
-typedef	uint64_t				mode_t;
-typedef	uint64_t				nlink_t;
-typedef	uint64_t				uid_t;
-typedef	uint64_t				gid_t;
-typedef	uint64_t				blksize_t;
-typedef	uint64_t				blkcnt_t;
-typedef	int64_t					clock_t;
-typedef	int64_t					time_t;
-typedef	int64_t					off_t;
-typedef	int64_t					ssize_t;
-typedef int					pid_t;
-#endif
+	File *fp = (File*) kmalloc(sizeof(File));
+	if (fp == NULL)
+	{
+		if (err != NULL) *err = ENOMEM;
+		return NULL;
+	};
 
-#endif
+	fp->oflags = oflags;
+	fp->refcount = 1;
+	fp->inode = vfsInodeDup(inode);
+	mutexInit(&fp->lock);
+	fp->offset = 0;
+
+	return fp;
+};
+
+File* vfsDup(File *fp)
+{
+	__sync_fetch_and_add(&fp->refcount, 1);
+
+	return fp;
+};
+
+void vfsClose(File *fp)
+{
+	if (__sync_add_and_fetch(&fp->refcount, -1) == 0)
+	{
+		vfsInodeUnref(fp->inode);
+		kfree(fp);
+	};
+};
