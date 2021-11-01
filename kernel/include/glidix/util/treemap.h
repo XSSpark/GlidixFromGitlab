@@ -55,15 +55,12 @@ typedef struct
  * 
  * Maps integer indices to untyped pointers, `void*`. Nothing is done to the
  * values if the treemap is destroyed.
+ * 
+ * All treemap operations are NOT thread-safe. Access to a shared treemap must be
+ * protected by a lock.
  */
 typedef struct
 {
-	/**
-	 * The lock. This must be a spinlock as this is used by low-level code such
-	 * as scheduling code.
-	 */
-	Spinlock lock;
-
 	/**
 	 * The master node.
 	 */
