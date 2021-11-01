@@ -38,7 +38,7 @@ TreeMap* treemapNew()
 		return map;
 	};
 
-	// zero out the master node and initialize the spinlock
+	// zero out the master node
 	memset(map, 0, sizeof(TreeMap));
 
 	return map;
@@ -68,8 +68,6 @@ void* treemapGet(TreeMap *map, uint32_t index)
 	TreeMapNode *node = &map->masterNode;
 	index = __builtin_bswap32(index);
 
-	IrqState irqState = spinlockAcquire(&map->lock);
-
 	int i;
 	for (i=0; i<TREEMAP_DEPTH; i++)
 	{
@@ -82,7 +80,6 @@ void* treemapGet(TreeMap *map, uint32_t index)
 		index >>= 8;
 	};
 
-	spinlockRelease(&map->lock, irqState);
 	return node;
 };
 
@@ -90,8 +87,6 @@ errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr)
 {
 	TreeMapNode *node = &map->masterNode;
 	index = __builtin_bswap32(index);
-	
-	IrqState irqState = spinlockAcquire(&map->lock);
 	
 	int i;
 	for (i=0; i<TREEMAP_DEPTH-1; i++)
@@ -102,7 +97,6 @@ errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr)
 			void *sub = kmalloc(sizeof(TreeMapNode));
 			if (sub == NULL)
 			{
-				spinlockRelease(&map->lock, irqState);
 				return ENOMEM;
 			};
 
@@ -115,7 +109,5 @@ errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr)
 	};
 
 	node->children[index] = ptr;
-	spinlockRelease(&map->lock, irqState);
-	
 	return 0;
 };
