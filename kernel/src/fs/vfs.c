@@ -28,6 +28,11 @@
 
 #include <glidix/util/memory.h>
 #include <glidix/fs/vfs.h>
+#include <glidix/util/hashmap.h>
+#include <glidix/util/init.h>
+#include <glidix/util/panic.h>
+#include <glidix/util/log.h>
+#include <glidix/util/string.h>
 
 /**
  * The mutex protecting the inode hashtable.
@@ -38,6 +43,29 @@ static Mutex vfsInodeTableLock;
  * The inode hashtable.
  */
 static Inode* vfsInodeTable[VFS_INODETAB_NUM_BUCKETS];
+
+/**
+ * The mutex protecting the filesystem driver map.
+ */
+static Mutex vfsDriverMapLock;
+
+/**
+ * The filesystem driver map.
+ */
+static HashMap* vfsDriverMap;
+
+static void vfsInitDriverMap()
+{
+	kprintf("Creating the filesystem driver map...\n");
+	
+	vfsDriverMap = hmNew();
+	if (vfsDriverMap == NULL)
+	{
+		panic("Failed to allocate the filesystem driver map!");
+	};
+};
+
+KERNEL_INIT_ACTION(vfsInitDriverMap, KAI_VFS_DRIVER_MAP);
 
 int vfsInodeAccess(Inode *inode, int rights)
 {
@@ -60,8 +88,18 @@ void vfsInodeUnref(Inode *inode)
 	};
 };
 
-FileSystem* vfsCreateFileSystem(FSDriver *driver, const char *image, const char *options, errno_t *err)
+FileSystem* vfsCreateFileSystem(const char *fsname, const char *image, const char *options, errno_t *err)
 {
+	mutexLock(&vfsDriverMapLock);
+	FSDriver *driver = hmGet(vfsDriverMap, fsname);
+	mutexUnlock(&vfsDriverMapLock);
+
+	if (driver == NULL)
+	{
+		if (err != NULL) *err = EINVAL;
+		return NULL;
+	};
+
 	FileSystem *fs = (FileSystem*) kmalloc(sizeof(FileSystem));
 	if (fs == NULL)
 	{
@@ -98,6 +136,7 @@ static Inode* vfsAllocInode(FileSystem *fs)
 		return NULL;
 	};
 
+	memset(inode, 0, sizeof(Inode));
 	inode->drvdata = inode->end;
 	inode->flags = 0;
 	inode->refcount = 1;
@@ -144,4 +183,22 @@ Inode* vfsInodeGet(FileSystem *fs, ino_t ino, errno_t *err)
 
 	mutexUnlock(&vfsInodeTableLock);
 	return inode;
+};
+
+errno_t vfsRegisterFileSystemDriver(FSDriver *driver)
+{
+	mutexLock(&vfsDriverMapLock);
+	errno_t err = 0;
+
+	if (hmGet(vfsDriverMap, driver->fsname) != NULL)
+	{
+		err = EEXIST;
+	}
+	else if (hmSet(vfsDriverMap, driver->fsname, driver) != 0)
+	{
+		err = ENOMEM;
+	};
+
+	mutexUnlock(&vfsDriverMapLock);
+	return err;
 };

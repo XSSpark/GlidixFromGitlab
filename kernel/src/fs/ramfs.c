@@ -26,15 +26,70 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __glidix_fs_ramfs_h
-#define	__glidix_fs_ramfs_h
-
 #include <glidix/fs/ramfs.h>
 #include <glidix/fs/vfs.h>
+#include <glidix/util/init.h>
+#include <glidix/util/log.h>
+#include <glidix/util/panic.h>
+
+static int ramfsMount(FileSystem *fs, const char *image, const char *options)
+{
+	if (options != NULL)
+	{
+		// no options are supported
+		return -EINVAL;
+	};
+
+	if (image[0] != 0)
+	{
+		// only an empty string is a valid image name
+		return -EINVAL;
+	};
+
+	// otherwise success, there is nothing more to do
+	return 0;
+};
+
+static ino_t ramfsGetRootIno(FileSystem *fs)
+{
+	return RAMFS_ROOT_INO;
+};
+
+static size_t ramfsGetInodeDriverDataSize(FileSystem *fs)
+{
+	return 0;
+};
+
+static int ramfsLoadInode(FileSystem *fs, Inode *inode, ino_t ino)
+{
+	if (ino != RAMFS_ROOT_INO)
+	{
+		// we should never be called with any other inode number
+		panic("ramfsLoadInode called with inode number %lu!", ino);
+	};
+
+	// root directory is a directory, sticky bit set, read/write for root,
+	// readonly for everyone else
+	inode->mode = VFS_MODE_DIRECTORY | VFS_MODE_STICKY | 0755;
+
+	return 0;
+};
 
 /**
  * The ramfs FSDriver object.
  */
+static FSDriver ramfsDriver = {
+	.fsname = "ramfs",
+	.mount = ramfsMount,
+	.getRootIno = ramfsGetRootIno,
+	.getInodeDriverDataSize = ramfsGetInodeDriverDataSize,
+	.loadInode = ramfsLoadInode,
+};
 
+static void ramfsInit()
+{
+	kprintf("Registering the ramfs...\n");
+	vfsRegisterFileSystemDriver(&ramfsDriver);
+};
 
-#endif
+KERNEL_INIT_ACTION(ramfsInit, KIA_RAMFS_REGISTER, KAI_VFS_DRIVER_MAP);

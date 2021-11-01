@@ -39,6 +39,11 @@
  */
 #define	VFS_INODETAB_NUM_BUCKETS			128
 
+/**
+ * Kernel init action for setting up the VFS driver system.
+ */
+#define	KAI_VFS_DRIVER_MAP				"vfsInitDriverMap"
+
 // typedef all the structs here
 typedef struct FSDriver_ FSDriver;
 typedef struct FileSystem_ FileSystem;
@@ -75,6 +80,9 @@ struct FSDriver_
 	 * Load an inode. The `inode` structure is initialized, and `drvdata` points to a block
 	 * of data of the size returned by `getInodeDriverDataSize()`, and the driver must initialize
 	 * it. Return 0 if successful, or a negated error number on error.
+	 * 
+	 * The `ino` is guaranteed to be a value provided by the driver itself; this will either be
+	 * the return value of `getRootIno()`, or an inode number we got from a dentry.
 	 */
 	int (*loadInode)(FileSystem *fs, Inode *inode, ino_t ino);
 };
@@ -137,6 +145,11 @@ struct Inode_
 	ino_t ino;
 
 	/**
+	 * The mode.
+	 */
+	mode_t mode;
+
+	/**
 	 * Char array at the end, this is where `drvdata` will be allocated.
 	 */
 	char end[];
@@ -168,7 +181,7 @@ void vfsInodeUnref(Inode *inode);
  * `options` is a string which contains options understood by the filesystem driver. The format is
  * driver-specific. `options` is explicitly allowed to be set to NULL for default options.
  */
-FileSystem* vfsCreateFileSystem(FSDriver *driver, const char *image, const char *options, errno_t *err);
+FileSystem* vfsCreateFileSystem(const char *fsname, const char *image, const char *options, errno_t *err);
 
 /**
  * Get an inode from the specified filesystem, and increment its reference count. You must call
@@ -176,5 +189,10 @@ FileSystem* vfsCreateFileSystem(FSDriver *driver, const char *image, const char 
  * stores the error number there.
  */
 Inode* vfsInodeGet(FileSystem *fs, ino_t ino, errno_t *err);
+
+/**
+ * Register a new filesystem driver. Returns 0 on success, or an error number on error.
+ */
+errno_t vfsRegisterFileSystemDriver(FSDriver *driver);
 
 #endif

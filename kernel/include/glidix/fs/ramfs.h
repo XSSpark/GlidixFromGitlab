@@ -31,4 +31,14 @@
 
 #include <glidix/util/common.h>
 
+/**
+ * ramfs root inode number (this is 2 for consistency with UNIX-based filesystems).
+ */
+#define	RAMFS_ROOT_INO						2
+
+/**
+ * Kernel init action for registering the ramfs.
+ */
+#define	KIA_RAMFS_REGISTER					"ramfsRegister"
+
 #endif
