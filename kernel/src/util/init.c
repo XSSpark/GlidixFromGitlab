@@ -54,8 +54,6 @@ KernelBootInfo *bootInfo;
  */
 static void kiaRun(const char *name)
 {
-	kprintf("Trying to execute %s...\n", name);
-
 	KernelInitAction *kia;
 	for (kia=kiaList; kia->initFunc!=NULL; kia++)
 	{
