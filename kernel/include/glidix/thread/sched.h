@@ -154,6 +154,12 @@ struct Process_
 	 * For each pending signal, the signal information.
 	 */
 	ksiginfo_t sigInfo[SIG_NUM];
+
+	/**
+	 * UIDs and GIDs.
+	 */
+	uid_t euid, suid, ruid;
+	gid_t egid, sgid, rgid;
 };
 
 /**
@@ -251,5 +257,15 @@ void schedPreempt();
  * (i.e. pending and not blocked).
  */
 int schedHaveReadySigs();
+
+/**
+ * Get the effective user ID of the current process. Kernel is always root.
+ */
+uid_t schedGetEffectiveUID();
+
+/**
+ * Get the effective group ID of the current process. Kernel is always root.
+ */
+gid_t schedGetEffectiveGID();
 
 #endif
