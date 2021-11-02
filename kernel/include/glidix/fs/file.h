@@ -95,4 +95,26 @@ File* vfsDup(File *fp);
  */
 void vfsClose(File *fp);
 
+/**
+ * Read from the specified position within a file. If the file is non-seekable, the position is ignored.
+ * Returns the number of bytes successfully read, 0 on EOF, or a negated error number on error.
+ */
+ssize_t vfsPRead(File *fp, void *buffer, size_t size, off_t pos);
+
+/**
+ * Write to the specified position within a file. If the file is non-seekable, the position is ignored.
+ * Returns the number of bytes successfully written, 0 on EOF, or a negated error number on error.
+ */
+ssize_t vfsPWrite(File *fp, const void *buffer, size_t size, off_t pos);
+
+/**
+ * Read from the current position within the file, and seek.
+ */
+ssize_t vfsRead(File *fp, void *buffer, size_t size);
+
+/**
+ * Write to the current position within the file, and seek.
+ */
+ssize_t vfsWrite(File *fp, const void *buffer, size_t size);
+
 #endif

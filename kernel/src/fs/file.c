@@ -42,7 +42,7 @@ File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err)
 	fp->oflags = oflags;
 	fp->refcount = 1;
 	fp->walker = vfsPathWalkerDup(walker);
-	mutexInit(&fp->lock);
+	mutexInit(&fp->posLock);
 	fp->offset = 0;
 
 	return fp;
@@ -62,4 +62,77 @@ void vfsClose(File *fp)
 		vfsPathWalkerDestroy(&fp->walker);
 		kfree(fp);
 	};
+};
+
+ssize_t vfsPRead(File *fp, void *buffer, size_t size, off_t pos)
+{
+	if ((fp->oflags & O_RDONLY) == 0)
+	{
+		// not open for reading
+		return -EPERM;
+	};
+
+	return vfsInodeRead(fp->walker.current, buffer, size, pos);
+};
+
+ssize_t vfsPWrite(File *fp, const void *buffer, size_t size, off_t pos)
+{
+	if ((fp->oflags & O_WRONLY) == 0)
+	{
+		// not open for writing
+		return -EPERM;
+	};
+
+	return vfsInodeWrite(fp->walker.current, buffer, size, pos);
+};
+
+ssize_t vfsRead(File *fp, void *buffer, size_t size)
+{
+	if ((fp->walker.current->flags & VFS_INODE_SEEKABLE) == 0)
+	{
+		// not seekable, so don't take the lock (as non-seekable files may
+		// block on reads)
+		return vfsPRead(fp, buffer, size, 0);
+	};
+
+	if ((fp->oflags & O_RDONLY) == 0)
+	{
+		// not open for reading
+		return -EPERM;
+	};
+
+	mutexLock(&fp->posLock);
+	ssize_t result = vfsPRead(fp, buffer, size, fp->offset);
+	if (result > 0)
+	{
+		fp->offset += result;
+	};
+	mutexUnlock(&fp->posLock);
+
+	return result;
+};
+
+ssize_t vfsWrite(File *fp, const void *buffer, size_t size)
+{
+	if ((fp->walker.current->flags & VFS_INODE_SEEKABLE) == 0)
+	{
+		// not seekable
+		return vfsPWrite(fp, buffer, size, 0);
+	};
+
+	if ((fp->oflags & O_WRONLY) == 0)
+	{
+		// not open for writing
+		return -EPERM;
+	};
+
+	mutexLock(&fp->posLock);
+	ssize_t result = vfsPWrite(fp, buffer, size, fp->offset);
+	if (result > 0)
+	{
+		fp->offset += result;
+	};
+	mutexUnlock(&fp->posLock);
+
+	return result;
 };
