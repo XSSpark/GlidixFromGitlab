@@ -328,6 +328,8 @@ static mode_t vfsGetCurrentUmask()
 static void vfsInodeInitAndInherit(Inode *parent, Inode *child, mode_t mode)
 {
 	child->mode = mode;
+	child->uid = schedGetEffectiveUID();
+	child->gid = schedGetEffectiveGID();
 	// TODO: other stuff like UID etc
 };
 

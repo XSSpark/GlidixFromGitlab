@@ -207,6 +207,16 @@ struct Inode_
 	size_t size;
 
 	/**
+	 * Owner of the file.
+	 */
+	uid_t uid;
+
+	/**
+	 * Group associated with the file.
+	 */
+	gid_t gid;
+
+	/**
 	 * Char array at the end, this is where `drvdata` will be allocated.
 	 */
 	char end[];
