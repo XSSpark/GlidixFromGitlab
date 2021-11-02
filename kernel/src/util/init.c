@@ -40,6 +40,7 @@
 #include <glidix/util/time.h>
 #include <glidix/util/string.h>
 #include <glidix/util/panic.h>
+#include <glidix/hw/pagetab.h>
 
 /**
  * The terminator of the kernel init action list, see `kernel.ld` for an
@@ -108,6 +109,10 @@ void kmain(KernelBootInfo *info)
 	kprintf("Glidix kernel, version %s\n", KERNEL_VERSION);
 	kprintf("Copyright (c) 2021, Madd Games.\n");
 	kprintf("All rights reserved.\n\n");
+
+	// initialize the userspace auxiliary area
+	kprintf("Setting up the userspace auxiliary pages...\n");
+	pagetabSetupUserAux();
 
 	// initialize the FPU
 	kprintf("Initializing the FPU...\n");

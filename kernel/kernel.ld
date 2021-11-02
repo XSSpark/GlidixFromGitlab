@@ -27,8 +27,14 @@
 */
 
 /**
+ * Virtual base address of the Userspace Auxiliary Area; this is chosen such that
+ * the auxiliary area occupies pml4[509] only.
+ */
+USER_AUX_VMA = 0xFFFFFE8000000000;
+
+/**
  * Virtual base address of the kernel; this is chosen such that the kernel image
- * occupied pml4[510] only.
+ * occupies pml4[510] only.
  */
 KERNEL_VMA = 0xFFFFFF0000000000;
 
@@ -39,6 +45,7 @@ APIC_PHYS_BASE = 0xFEE00000;
 
 PHDRS
 {
+	user_aux PT_LOAD;
 	text PT_LOAD;
 	data PT_LOAD;
 	initrd 0x60000001;			/* tells bootloader to load the initrd here */
@@ -47,6 +54,14 @@ PHDRS
 
 SECTIONS
 {
+	. = USER_AUX_VMA;
+
+	.user_aux :
+	{
+		__userAuxBegin = .;
+		*(.user_aux)
+		__userAuxEnd = .;
+	} :user_aux
 	
 	. = KERNEL_VMA;
 	
@@ -55,8 +70,8 @@ SECTIONS
 		code = .;
 		*(.text)
 		*(.rodata)
-		. = ALIGN(4096);
-		*(.usup_text)
+		*(.rodata*)
+		*(.eh_frame)
 	} :text
 	
 	. = ALIGN(4096);
