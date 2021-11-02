@@ -127,11 +127,19 @@ ssize_t vfsWrite(File *fp, const void *buffer, size_t size)
 	};
 
 	mutexLock(&fp->posLock);
-	ssize_t result = vfsPWrite(fp, buffer, size, fp->offset);
-	if (result > 0)
+	ssize_t result;
+	if (fp->oflags & O_APPEND)
 	{
-		fp->offset += result;
-	};
+		result = vfsPWrite(fp, buffer, size, fp->walker.current->size);
+	}
+	else
+	{
+		result = vfsPWrite(fp, buffer, size, fp->offset);
+		if (result > 0)
+		{
+			fp->offset += result;
+		};
+	}
 	mutexUnlock(&fp->posLock);
 
 	return result;
