@@ -30,6 +30,9 @@
 #include <glidix/hw/kom.h>
 #include <glidix/util/string.h>
 
+extern char __userAuxBegin[];
+extern char __userAuxEnd[];
+
 void pagetabGetNodes(const void *ptr, PageNodeEntry* nodes[4])
 {
 	// use recursive mapping to find the nodes
@@ -107,4 +110,22 @@ void* pagetabMapPhys(uint64_t phaddr, size_t size, uint64_t flags)
 	};
 
 	return result + offset;
+};
+
+void pagetabSetupUserAux()
+{
+	char *scan;
+	for (scan=__userAuxBegin; scan<__userAuxEnd; scan+=PAGE_SIZE)
+	{
+		PageNodeEntry *nodes[4];
+		pagetabGetNodes(scan, nodes);
+
+		int i;
+		for (i=0; i<4; i++)
+		{
+			nodes[i]->value |= PT_USER;
+		};
+
+		invlpg(scan);
+	};
 };

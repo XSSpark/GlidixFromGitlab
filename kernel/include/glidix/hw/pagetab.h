@@ -141,4 +141,9 @@ static inline void pagetabSetCR3(uint64_t cr3)
 	ASM ("mov %0, %%cr3" : : "a" (cr3));
 };
 
+/**
+ * Mark the userspace auxiliary code as accessible from user mode.
+ */
+void pagetabSetupUserAux();
+
 #endif

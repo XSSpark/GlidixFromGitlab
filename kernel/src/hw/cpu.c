@@ -136,8 +136,9 @@ void cpuStartAPs()
 
 		// allocate a new PML4 for this CPU:
 		// (1) PML4[0] is set to the PML4e we got earlier, to identity-map lowmem
-		// (2) PML4[510] is mapped to our own PML4[510], as this is where the kernel resides
-		// (3) PML4[511] is mapped to itself (to its real version), for recursive mapping
+		// (2) PML4[509] is mapped to our own PML4[509], as this is the userspace auxiliary area
+		// (3) PML4[510] is mapped to our own PML4[510], as this is where the kernel resides
+		// (4) PML4[511] is mapped to itself (to its real version), for recursive mapping
 		uint64_t *pml4 = (uint64_t*) komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
 		if (pml4 == NULL)
 		{
@@ -146,6 +147,7 @@ void cpuStartAPs()
 
 		memset(pml4, 0, PAGE_SIZE);
 		pml4[0] = pml4EntZero;
+		pml4[509] = pml4BSP[509];
 		pml4[510] = pml4BSP[510];
 		pml4[511] = pagetabGetPhys(pml4) | PT_WRITE | PT_PRESENT | PT_NOEXEC;
 
