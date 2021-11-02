@@ -30,7 +30,7 @@
 #include <glidix/util/memory.h>
 #include <glidix/util/string.h>
 
-File* vfsOpenInode(Inode *inode, int oflags, errno_t *err)
+File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err)
 {
 	int rights = 0;
 	if ((oflags & O_RDWR) == O_RDWR) rights = VFS_ACCESS_WRITE | VFS_ACCESS_READ;
@@ -42,7 +42,7 @@ File* vfsOpenInode(Inode *inode, int oflags, errno_t *err)
 		return NULL;
 	};
 
-	if (!vfsInodeAccess(inode, rights))
+	if (!vfsInodeAccess(walker->current, rights))
 	{
 		if (err != NULL) *err = EACCES;
 		return NULL;
@@ -57,7 +57,7 @@ File* vfsOpenInode(Inode *inode, int oflags, errno_t *err)
 
 	fp->oflags = oflags;
 	fp->refcount = 1;
-	fp->inode = vfsInodeDup(inode);
+	fp->walker = vfsPathWalkerDup(walker);
 	mutexInit(&fp->lock);
 	fp->offset = 0;
 
@@ -75,7 +75,7 @@ void vfsClose(File *fp)
 {
 	if (__sync_add_and_fetch(&fp->refcount, -1) == 0)
 	{
-		vfsInodeUnref(fp->inode);
+		vfsPathWalkerDestroy(&fp->walker);
 		kfree(fp);
 	};
 };

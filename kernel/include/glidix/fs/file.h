@@ -33,6 +33,7 @@
 #include <glidix/thread/mutex.h>
 #include <glidix/fs/stat.h>
 #include <glidix/fs/vfs.h>
+#include <glidix/fs/path.h>
 
 /**
  * File capability meaning it can be seeked.
@@ -46,7 +47,7 @@
  * and can be directly read by any code. However, all other fields are opaque, and
  * must only be accessed via functions provided in this file!
  */
-typedef struct
+typedef struct File_
 {
 	/**
 	 * File open flags (`O_*`).
@@ -59,9 +60,9 @@ typedef struct
 	int refcount;
 
 	/**
-	 * The inode which this file description is referring to.
+	 * The path walker pointing to the inode this file is referring to.
 	 */
-	Inode *inode;
+	PathWalker walker;
 
 	/**
 	 * The mutex protecting access to the file.
@@ -82,7 +83,7 @@ typedef struct
  * 
  * If successful, this function takes its own reference to the inode.
  */
-File* vfsOpenInode(Inode *inode, int oflags, errno_t *err);
+File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err);
 
 /**
  * Increment the reference count of the file, and return it again.

@@ -40,6 +40,11 @@
 #define	VFS_INODETAB_NUM_BUCKETS			128
 
 /**
+ * Number of buckets in the dentry hashtable.
+ */
+#define	VFS_DENTRYTAB_NUM_BUCKETS			512
+
+/**
  * Kernel init action for setting up the VFS driver system.
  */
 #define	KAI_VFS_DRIVER_MAP				"vfsInitDriverMap"
@@ -48,6 +53,8 @@
 typedef struct FSDriver_ FSDriver;
 typedef struct FileSystem_ FileSystem;
 typedef struct Inode_ Inode;
+typedef struct Dentry_ Dentry;
+struct File_;
 
 /**
  * A filesystem driver.
@@ -85,6 +92,23 @@ struct FSDriver_
 	 * the return value of `getRootIno()`, or an inode number we got from a dentry.
 	 */
 	int (*loadInode)(FileSystem *fs, Inode *inode, ino_t ino);
+
+	/**
+	 * Load a dentry when there was a dentry cache miss. If successful, this function sets `dent->target`
+	 * to the target inode number, and returns 0. Otherwise, it returns a negated error number.
+	 */
+	int (*loadDentry)(Inode *inode, Dentry *dent);
+
+	/**
+	 * Make a new inode in the filesystem. `parent` is the inode of the parent directory. `dent` is a new
+	 * dentry (with `dent->name` being set) to be added to the parent directory, and `child` is the child
+	 * inode. If this operation is successful, it must set `child->ino` and `dent->target` to be the
+	 * newly-allocated inode number for the child inode, and then return 0. On error, it must return a
+	 * negated error number. If a dentry with the specified name already exists in the parent directory on
+	 * disk, this function must fail! This function must also check the inode type in `child->mode`, to
+	 * ensure that the type of recognised and that the underlying filesystem can create it properly.
+	 */
+	int (*makeNode)(Inode *parent, Dentry *dent, Inode *child);
 };
 
 /**
@@ -156,6 +180,53 @@ struct Inode_
 };
 
 /**
+ * A directory entry.
+ */
+struct Dentry_
+{
+	/**
+	 * KOM object header.
+	 */
+	KOM_Header header;
+
+	/**
+	 * Dentry flags (`VFS_DENTRY_*`).
+	 */
+	int flags;
+
+	/**
+	 * Reference count.
+	 */
+	int refcount;
+
+	/**
+	 * Links within the dentry hashtable.
+	 */
+	Dentry *prev;
+	Dentry *next;
+	
+	/**
+	 * The filesystem containing this dentry.
+	 */
+	FileSystem *fs;
+
+	/**
+	 * The parent inode number (i.e. the directory containing this dentry).
+	 */
+	ino_t parent;
+
+	/**
+	 * The inode number of the dentry target.
+	 */
+	ino_t target;
+
+	/**
+	 * The name.
+	 */
+	char name[];
+};
+
+/**
  * Determine if the specified access rights (bitwise-OR of one or more `VFS_ACCESS_*`) can be
  * peformed by the current user. Returns nonzero if access granted.
  */
@@ -194,5 +265,35 @@ Inode* vfsInodeGet(FileSystem *fs, ino_t ino, errno_t *err);
  * Register a new filesystem driver. Returns 0 on success, or an error number on error.
  */
 errno_t vfsRegisterFileSystemDriver(FSDriver *driver);
+
+/**
+ * Get (and upref) the root inode of the specified filesystem. Returns NULL on error; and if `err`
+ * is not NULL, it is set to the error number.
+ */
+Inode* vfsGetFileSystemRoot(FileSystem *fs, errno_t *err);
+
+/**
+ * Increment the refcount of a dentry and return it again.
+ */
+Dentry* vfsDentryDup(Dentry *dent);
+
+/**
+ * Unreference a dentry.
+ */
+void vfsDentryUnref(Dentry *dent);
+
+/**
+ * Get (and upref) a dentry on the specified directory, with the specified name. Returns NULL on error;
+ * and if `err` is not NULL, it is set to the error number.
+ */
+Dentry* vfsDentryGet(Inode *dir, const char *name, errno_t *err);
+
+/**
+ * Create a new directory. `fp` is a file pointer referring to the directory which will be used as the
+ * starting point for relative paths; or NULL if the current working directory should be used. `path`
+ * is a path for the new directory (the parent must already exist). `mode` specifies the permissions
+ * with which the directory is to be created. Returns 0 on success, or a negated error number on error.
+ */
+int vfsCreateDirectory(struct File_ *fp, const char *path, mode_t mode);
 
 #endif

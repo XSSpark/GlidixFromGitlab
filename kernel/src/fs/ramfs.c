@@ -32,6 +32,8 @@
 #include <glidix/util/log.h>
 #include <glidix/util/panic.h>
 
+static ino_t ramfsNextIno = 8;
+
 static int ramfsMount(FileSystem *fs, const char *image, const char *options)
 {
 	if (options != NULL)
@@ -72,6 +74,38 @@ static int ramfsLoadInode(FileSystem *fs, Inode *inode, ino_t ino)
 	// readonly for everyone else
 	inode->mode = VFS_MODE_DIRECTORY | VFS_MODE_STICKY | 0755;
 
+	// indicate that the inode is non-cacheable
+	inode->flags = VFS_INODE_NOCACHE;
+	
+	return 0;
+};
+
+static int ramfsLoadDentry(Inode *parent, Dentry *dent)
+{
+	// if we were asked to load a dentry it means there was a cache miss,
+	// which in the case of ramfs can only happen if the dentry does not
+	// exist, so we return the error
+	return -ENOENT;
+};
+
+static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
+{
+	errno_t err;
+	Dentry *collision = vfsDentryGet(parent, dent->name, &err);
+	if (collision != NULL)
+	{
+		vfsDentryUnref(collision);
+		return -EEXIST;
+	};
+
+	if (err != ENOENT)
+	{
+		return -err;
+	};
+
+	child->ino = __sync_fetch_and_add(&ramfsNextIno, 1);
+	dent->target = child->ino;
+
 	return 0;
 };
 
@@ -84,6 +118,8 @@ static FSDriver ramfsDriver = {
 	.getRootIno = ramfsGetRootIno,
 	.getInodeDriverDataSize = ramfsGetInodeDriverDataSize,
 	.loadInode = ramfsLoadInode,
+	.loadDentry = ramfsLoadDentry,
+	.makeNode = ramfsMakeNode,
 };
 
 static void ramfsInit()

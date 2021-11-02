@@ -70,6 +70,12 @@
 #define	VFS_INODE_NOCACHE				(1 << 1)
 
 /**
+ * Dentry flag indicating the inode is only in RAM and thus cannot be cached when the
+ * refcount is zero (this is only used by `ramfs`).
+ */
+#define	VFS_DENTRY_NOCACHE				(1 << 0)
+
+/**
  * File open flags.
  */
 #ifndef O_WRONLY
