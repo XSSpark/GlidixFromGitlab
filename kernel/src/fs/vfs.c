@@ -555,3 +555,27 @@ struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t 
 	vfsPathWalkerDestroy(&walker);
 	return fp;
 };
+
+ssize_t vfsInodeRead(Inode *inode, void *buffer, size_t size, off_t pos)
+{
+	if (inode->ops != NULL)
+	{
+		return inode->ops->pread(inode, buffer, size, pos);
+	}
+	else
+	{
+		return -EIO; // TODO
+	};
+};
+
+ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos)
+{
+	if (inode->ops != NULL)
+	{
+		return inode->ops->pwrite(inode, buffer, size, pos);
+	}
+	else
+	{
+		return -EIO; // TODO
+	};
+};

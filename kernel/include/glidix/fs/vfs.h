@@ -52,6 +52,7 @@
 // typedef all the structs here
 typedef struct FSDriver_ FSDriver;
 typedef struct FileSystem_ FileSystem;
+typedef struct InodeOps_ InodeOps;
 typedef struct Inode_ Inode;
 typedef struct Dentry_ Dentry;
 struct File_;
@@ -128,6 +129,26 @@ struct FileSystem_
 };
 
 /**
+ * Special inode operations.
+ */
+struct InodeOps_
+{
+	/**
+	 * Read from the specified position within the file. If the file is non-seekable,
+	 * ignore the position. Return the number of bytes successfully read, 0 on EOF,
+	 * or a negated error number on error.
+	 */
+	ssize_t (*pread)(Inode *inode, void *buffer, size_t size, off_t pos);
+
+	/**
+	 * Write to the specified position within the file. If the file is non-seekable,
+	 * ignore the position. Returns the number of bytes successfully written, or a
+	 * negated error number on error.
+	 */
+	ssize_t (*pwrite)(Inode *inode, const void *buffer, size_t size, off_t pos);
+};
+
+/**
  * An inode, containing information about a filesystem member.
  */
 struct Inode_
@@ -159,6 +180,13 @@ struct Inode_
 	Inode *next;
 
 	/**
+	 * If this is not NULL, then this contains pointers to implementations of file operations
+	 * for special files (such as devices, pipes etc). If this is NULL, then regular operations
+	 * are implemented instead (using the page cache, etc).
+	 */
+	InodeOps *ops;
+
+	/**
 	 * The filesystem description for the filesystem on which this inode resides.
 	 */
 	FileSystem *fs;
@@ -172,6 +200,11 @@ struct Inode_
 	 * The mode.
 	 */
 	mode_t mode;
+
+	/**
+	 * Size of the file (for regular files).
+	 */
+	size_t size;
 
 	/**
 	 * Char array at the end, this is where `drvdata` will be allocated.
@@ -303,5 +336,17 @@ int vfsCreateDirectory(struct File_ *fp, const char *path, mode_t mode);
  * will be stored there.
  */
 struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t mode, errno_t *err);
+
+/**
+ * Read from the specified position within an inode. If the inode is non-seekable, the position is
+ * ignored. Returns the number of bytes successfully read, 0 on EOF, or a negated error number on error.
+ */
+ssize_t vfsInodeRead(Inode *inode, void *buffer, size_t size, off_t pos);
+
+/**
+ * Write to the specified position within an inode. If the inode is non-seekable, the position is
+ * ignored. Returns the numbe of bytes successfully written, or a negated error number on error.
+ */
+ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos);
 
 #endif

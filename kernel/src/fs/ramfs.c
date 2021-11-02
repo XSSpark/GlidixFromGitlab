@@ -105,6 +105,7 @@ static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
 
 	child->ino = __sync_fetch_and_add(&ramfsNextIno, 1);
 	dent->target = child->ino;
+	dent->flags |= VFS_DENTRY_NOCACHE;
 
 	return 0;
 };

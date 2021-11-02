@@ -65,12 +65,13 @@ typedef struct File_
 	PathWalker walker;
 
 	/**
-	 * The mutex protecting access to the file.
+	 * The mutex protecting the offset field, and ensuring that read-write-seek
+	 * operations are atomic.
 	 */
-	Mutex lock;
+	Mutex posLock;
 
 	/**
-	 * File offset (only makes sense if `VFS_FCAP_SEEKABLE` is set).
+	 * File offset.
 	 */
 	off_t offset;
 } File;
