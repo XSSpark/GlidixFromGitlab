@@ -49,6 +49,22 @@
  */
 #define	KAI_VFS_DRIVER_MAP				"vfsInitDriverMap"
 
+/**
+ * The dirty flag in page cache.
+ */
+#define	VFS_PAGECACHE_DIRTY				(1UL << 63)
+
+/**
+ * Maximum size of a file. File offsets can only be up to 48 bits long,
+ * just like memory addresses.
+ */
+#define	VFS_MAX_SIZE					(1UL << 48)
+
+/**
+ * Address mask in the page cache.
+ */
+#define	VFS_PAGECACHE_ADDR_MASK				0x0000FFFFFFFFFFFFUL
+
 // typedef all the structs here
 typedef struct FSDriver_ FSDriver;
 typedef struct FileSystem_ FileSystem;
@@ -56,6 +72,19 @@ typedef struct InodeOps_ InodeOps;
 typedef struct Inode_ Inode;
 typedef struct Dentry_ Dentry;
 struct File_;
+
+/**
+ * Page cache node.
+ */
+typedef struct
+{
+	/**
+	 * Flags and address. The bottom 48 bits can be sign-extended
+	 * (and are always negative!) to get the address of the next node,
+	 * while the top 16 bits are used for flags.
+	 */
+	uint64_t ents[512];
+} PageCacheNode;
 
 /**
  * A filesystem driver.
@@ -110,6 +139,14 @@ struct FSDriver_
 	 * ensure that the type of recognised and that the underlying filesystem can create it properly.
 	 */
 	int (*makeNode)(Inode *parent, Dentry *dent, Inode *child);
+
+	/**
+	 * Load the specified page from `inode` into `buffer`. `offset` is a page-aligned offset into the file
+	 * data. Returns 0 on success, or a negated error number on error.
+	 * 
+	 * If the offset does not currently exist, most filesystem will zero out `buffer`.
+	 */
+	int (*loadPage)(Inode *inode, off_t offset, void *buffer);
 };
 
 /**
@@ -207,14 +244,24 @@ struct Inode_
 	size_t size;
 
 	/**
-	 * Owner of the file.
+	 * Owner of the inode.
 	 */
 	uid_t uid;
 
 	/**
-	 * Group associated with the file.
+	 * Group associated with the inode.
 	 */
 	gid_t gid;
+
+	/**
+	 * Mutex protecting the page cache.
+	 */
+	Mutex pageCacheLock;
+
+	/**
+	 * Master node of the page cache (may be NULL).
+	 */
+	PageCacheNode *pageCacheMaster;
 
 	/**
 	 * Char array at the end, this is where `drvdata` will be allocated.

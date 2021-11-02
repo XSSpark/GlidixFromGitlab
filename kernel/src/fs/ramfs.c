@@ -31,6 +31,8 @@
 #include <glidix/util/init.h>
 #include <glidix/util/log.h>
 #include <glidix/util/panic.h>
+#include <glidix/hw/pagetab.h>
+#include <glidix/util/string.h>
 
 static ino_t ramfsNextIno = 8;
 
@@ -117,6 +119,13 @@ static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
 	return 0;
 };
 
+static int ramfsLoadPage(Inode *inode, off_t pos, void *buffer)
+{
+	// there's no data "already on disk" ever, so we just zero out
+	memset(buffer, 0, PAGE_SIZE);
+	return 0;
+};
+
 /**
  * The ramfs FSDriver object.
  */
@@ -128,6 +137,7 @@ static FSDriver ramfsDriver = {
 	.loadInode = ramfsLoadInode,
 	.loadDentry = ramfsLoadDentry,
 	.makeNode = ramfsMakeNode,
+	.loadPage = ramfsLoadPage,
 };
 
 static void ramfsInit()

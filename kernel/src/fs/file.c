@@ -171,7 +171,7 @@ off_t vfsSeek(File *fp, off_t offset, int whence)
 		break;
 	};
 	
-	if (target >= 0)
+	if (target >= 0 && target <= VFS_MAX_SIZE)
 	{
 		fp->offset = target;
 	};
@@ -181,6 +181,10 @@ off_t vfsSeek(File *fp, off_t offset, int whence)
 	if (target < 0)
 	{
 		return -EINVAL;
+	}
+	else if (target > VFS_MAX_SIZE)
+	{
+		return -EOVERFLOW;
 	}
 	else
 	{

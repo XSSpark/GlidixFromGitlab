@@ -36,6 +36,8 @@
 #include <glidix/fs/ramfs.h>
 #include <glidix/fs/file.h>
 #include <glidix/fs/path.h>
+#include <glidix/hw/kom.h>
+#include <glidix/hw/pagetab.h>
 
 /**
  * The mutex protecting the inode hashtable.
@@ -558,15 +560,161 @@ struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t 
 	return fp;
 };
 
+/**
+ * Get a pointer to the specified offset in the page cache of the specified inode.
+ * Only call this while the page cache mutex is locked. The returned pointer can be
+ * accessed as long as the mutex is held, but you must NOT cross any page boundaries!
+ * 
+ * If there is a cache miss, the page will be loaded. If it cannot be loaded, NULL
+ * is returned, and if `err` is not NULL, it will be set to the error number.
+ * 
+ * If `markDirty` is nonzero, then the traversed pages will be marked dirty.
+ */
+static void* _vfsGetCachePage(Inode *inode, off_t offset, int markDirty, errno_t *err)
+{
+	if (offset < 0 || offset >= VFS_MAX_SIZE)
+	{
+		if (err != NULL) *err = EOVERFLOW;
+		return NULL;
+	};
+
+	int indexes[4];
+	indexes[3] = (offset >> 12) & 0x1FF;
+	indexes[2] = (offset >> (12+9)) & 0x1FF;
+	indexes[1] = (offset >> (12+9+9)) & 0x1FF;
+	indexes[0] = (offset >> (12+9+9+9)) & 0x1FF;
+
+	if (inode->pageCacheMaster == NULL)
+	{
+		inode->pageCacheMaster = (PageCacheNode*) komAllocBlock(
+			KOM_BUCKET_PAGE, KOM_POOLBIT_ALL & ~(KOM_POOLBIT_INODES | KOM_POOLBIT_PAGE_CACHE)
+		);
+
+		if (inode->pageCacheMaster == NULL)
+		{
+			if (err != NULL) *err = ENOMEM;
+			return NULL;
+		};
+
+		memset(inode->pageCacheMaster, 0, PAGE_SIZE);
+	};
+
+	PageCacheNode *node = inode->pageCacheMaster;
+	int i;
+	for (i=0; i<3; i++)
+	{
+		int indexIntoNode = indexes[i];
+		if (node->ents[indexIntoNode] == 0)
+		{
+			PageCacheNode *nextNode = (PageCacheNode*) (PageCacheNode*) komAllocBlock(
+				KOM_BUCKET_PAGE, KOM_POOLBIT_ALL & ~(KOM_POOLBIT_INODES | KOM_POOLBIT_PAGE_CACHE)
+			);
+
+			if (nextNode == NULL)
+			{
+				if (err != NULL) *err = ENOMEM;
+				return NULL;
+			};
+
+			memset(nextNode, 0, PAGE_SIZE);
+
+			node->ents[indexIntoNode] = (uint64_t) nextNode & VFS_PAGECACHE_ADDR_MASK;
+		};
+
+		if (markDirty)
+		{
+			node->ents[indexIntoNode] |= VFS_PAGECACHE_DIRTY;
+		};
+
+		node = (PageCacheNode*) (node->ents[indexIntoNode] | (~VFS_PAGECACHE_ADDR_MASK));
+	};
+
+	// final step is to get the page itself
+	int finalIndex = indexes[3];
+	if (node->ents[finalIndex] == 0)
+	{
+		// cache miss, try to load it
+		off_t alignedOffset = offset & ~0xFFF;
+		void *page = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL & ~(KOM_POOLBIT_INODES | KOM_POOLBIT_PAGE_CACHE));
+		
+		if (page == NULL)
+		{
+			if (err != NULL) *err = ENOMEM;
+			return NULL;
+		};
+
+		int status = inode->fs->driver->loadPage(inode, alignedOffset, page);
+		if (status != 0)
+		{
+			komReleaseBlock(page, KOM_BUCKET_PAGE);
+			if (err != NULL) *err = -status;
+			return NULL;
+		};
+
+		node->ents[finalIndex] = (uint64_t) page & VFS_PAGECACHE_ADDR_MASK;
+	};
+
+	if (markDirty)
+	{
+		node->ents[finalIndex] |= VFS_PAGECACHE_DIRTY;
+	};
+
+	return (void*) ((node->ents[finalIndex] | (~VFS_PAGECACHE_ADDR_MASK)) + (offset & 0xFFF));
+};
+
 ssize_t vfsInodeRead(Inode *inode, void *buffer, size_t size, off_t pos)
 {
 	if (inode->ops != NULL)
 	{
 		return inode->ops->pread(inode, buffer, size, pos);
 	}
+	else if ((inode->mode & VFS_MODE_TYPEMASK) == VFS_MODE_REGULAR)
+	{
+		char *put = (char*) buffer;
+		size_t totalFileSize = inode->size;
+		if (pos+size > totalFileSize)
+		{
+			size = totalFileSize - pos;
+		};
+
+		mutexLock(&inode->pageCacheLock);
+
+		ssize_t sizeReadGood = 0;
+		errno_t err = 0;
+
+		while (size > 0)
+		{
+			void *data = _vfsGetCachePage(inode, pos, 0, &err);
+			if (data == NULL)
+			{
+				break;
+			};
+
+			size_t readNow = PAGE_SIZE - (pos & 0xFFF);
+			if (readNow > size) readNow = size;
+
+			memcpy(put, data, readNow);
+			size -= readNow;
+			put += readNow;
+			sizeReadGood += readNow;
+		};
+
+		mutexUnlock(&inode->pageCacheLock);
+		
+		if (sizeReadGood == 0 && err != 0)
+		{
+			return -err;
+		};
+
+		return sizeReadGood;
+	}
+	else if ((inode->mode & VFS_MODE_TYPEMASK) == VFS_MODE_DIRECTORY)
+	{
+		return -EISDIR;
+	}
 	else
 	{
-		return -EIO; // TODO
+		return -EINVAL;
 	};
 };
 
@@ -576,8 +724,56 @@ ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos)
 	{
 		return inode->ops->pwrite(inode, buffer, size, pos);
 	}
+	else if ((inode->mode & VFS_MODE_TYPEMASK) == VFS_MODE_REGULAR)
+	{
+		const char *scan = (const char*) buffer;
+
+		size_t currentSize = inode->size;
+		size_t newEnd = pos + size;
+
+		while (currentSize < newEnd)
+		{
+			__sync_val_compare_and_swap(&inode->size, currentSize, newEnd);
+			currentSize = inode->size;
+		};
+
+		mutexLock(&inode->pageCacheLock);
+
+		ssize_t sizeWrittenGood = 0;
+		errno_t err = 0;
+
+		while (size > 0)
+		{
+			void *data = _vfsGetCachePage(inode, pos, 0, &err);
+			if (data == NULL)
+			{
+				break;
+			};
+
+			size_t writeNow = PAGE_SIZE - (pos & 0xFFF);
+			if (writeNow > size) writeNow = size;
+
+			memcpy(data, scan, writeNow);
+			size -= writeNow;
+			scan += writeNow;
+			sizeWrittenGood += writeNow;
+		};
+
+		mutexUnlock(&inode->pageCacheLock);
+
+		if (sizeWrittenGood == 0 && err != 0)
+		{
+			return -err;
+		};
+
+		return sizeWrittenGood;
+	}
+	else if ((inode->mode & VFS_MODE_TYPEMASK) == VFS_MODE_DIRECTORY)
+	{
+		return -EISDIR;
+	}
 	else
 	{
-		return -EIO; // TODO
+		return -EINVAL;
 	};
 };

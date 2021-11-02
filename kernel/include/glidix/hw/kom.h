@@ -37,6 +37,8 @@
 typedef enum
 {
 	KOM_POOL_UNUSED,
+	KOM_POOL_PAGE_CACHE,
+	KOM_POOL_INODES,
 
 	KOM_NUM_POOLS,					// number of pools
 } KOM_PoolType;
@@ -45,6 +47,8 @@ typedef enum
  * Pool bits.
  */
 #define	KOM_POOLBIT_UNUSED				(1 << 0)
+#define	KOM_POOLBIT_PAGE_CACHE				(1 << 1)
+#define	KOM_POOLBIT_INODES				(1 << 2)
 #define	KOM_POOLBIT_ALL					((1 << KOM_NUM_POOLS) - 1)
 
 /**
