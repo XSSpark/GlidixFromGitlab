@@ -117,4 +117,10 @@ ssize_t vfsRead(File *fp, void *buffer, size_t size);
  */
 ssize_t vfsWrite(File *fp, const void *buffer, size_t size);
 
+/**
+ * Seek the file. `whence` is one of the `VFS_SEEK_*` constants. If successful, returns the new offset
+ * (relative to the start of the file); otherwise returns a negated error number.
+ */
+off_t vfsSeek(File *fp, off_t offset, int whence);
+
 #endif

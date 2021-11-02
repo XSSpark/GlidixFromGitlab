@@ -136,3 +136,46 @@ ssize_t vfsWrite(File *fp, const void *buffer, size_t size)
 
 	return result;
 };
+
+off_t vfsSeek(File *fp, off_t offset, int whence)
+{
+	if ((fp->walker.current->flags & VFS_INODE_SEEKABLE) == 0)
+	{
+		// not seekable
+		return -ESPIPE;
+	};
+
+	mutexLock(&fp->posLock);
+	off_t target;
+	switch (whence)
+	{
+	case VFS_SEEK_CUR:
+		target = fp->offset + offset;
+		break;
+	case VFS_SEEK_END:
+		target = fp->walker.current->size + offset;
+		break;
+	case VFS_SEEK_SET:
+		target = offset;
+		break;
+	default:
+		target = -1;
+		break;
+	};
+	
+	if (target >= 0)
+	{
+		fp->offset = target;
+	};
+
+	mutexUnlock(&fp->posLock);
+
+	if (target < 0)
+	{
+		return -EINVAL;
+	}
+	else
+	{
+		return target;
+	};
+};

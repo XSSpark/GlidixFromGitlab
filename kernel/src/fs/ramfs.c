@@ -104,6 +104,13 @@ static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
 	};
 
 	child->ino = __sync_fetch_and_add(&ramfsNextIno, 1);
+
+	if ((child->mode & VFS_MODE_TYPEMASK) == VFS_MODE_REGULAR)
+	{
+		// regular file is seekable
+		child->flags |= VFS_INODE_SEEKABLE;
+	};
+
 	dent->target = child->ino;
 	dent->flags |= VFS_DENTRY_NOCACHE;
 
