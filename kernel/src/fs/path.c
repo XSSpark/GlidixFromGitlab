@@ -224,3 +224,9 @@ char* vfsDirName(const char *path)
 
 	return copy;
 };
+
+void vfsWalkToChild(PathWalker *walker, Inode *child)
+{
+	vfsInodeUnref(walker->current);
+	walker->current = vfsInodeDup(child);
+};

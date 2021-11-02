@@ -32,22 +32,6 @@
 
 File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err)
 {
-	int rights = 0;
-	if ((oflags & O_RDWR) == O_RDWR) rights = VFS_ACCESS_WRITE | VFS_ACCESS_READ;
-	else if (oflags & O_RDONLY) rights = VFS_ACCESS_READ;
-	else if (oflags & O_WRONLY) rights = VFS_ACCESS_WRITE;
-	else
-	{
-		if (err != NULL) *err = EINVAL;
-		return NULL;
-	};
-
-	if (!vfsInodeAccess(walker->current, rights))
-	{
-		if (err != NULL) *err = EACCES;
-		return NULL;
-	};
-
 	File *fp = (File*) kmalloc(sizeof(File));
 	if (fp == NULL)
 	{

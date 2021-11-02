@@ -296,4 +296,12 @@ Dentry* vfsDentryGet(Inode *dir, const char *name, errno_t *err);
  */
 int vfsCreateDirectory(struct File_ *fp, const char *path, mode_t mode);
 
+/**
+ * Open (and possibly create) a file. `start` is a file pointer referring to the directory which will
+ * be used as the starting point for relative paths; or NULL if the current working directory should
+ * be used. Returns a file pointer on success, or NULL on error. If `err` is not NULL, the error number
+ * will be stored there.
+ */
+struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t mode, errno_t *err);
+
 #endif

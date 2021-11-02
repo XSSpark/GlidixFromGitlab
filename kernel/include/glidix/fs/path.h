@@ -75,6 +75,12 @@ PathWalker vfsPathWalkerGetRoot();
 int vfsWalk(PathWalker *walker, const char *path);
 
 /**
+ * Walk the specified walker into an inode, which you promise is its own child.
+ * This function takes its own reference to the child.
+ */
+void vfsWalkToChild(PathWalker *walker, Inode *child);
+
+/**
  * Get the base name component of the specified path, as a new string on the heap.
  * You must call `kfree()` on it later. Returns NULL if allocation failed.
  */

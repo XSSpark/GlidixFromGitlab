@@ -136,9 +136,9 @@ FileSystem* vfsCreateFileSystem(const char *fsname, const char *image, const cha
 /**
  * Calculate the hash of a filesystem/inode number for the inode hashtable.
  */
-static int vfsInodeHash(FileSystem *fs, ino_t ino)
+static unsigned int vfsInodeHash(FileSystem *fs, ino_t ino)
 {
-	return (int) (uint64_t) fs + (int) ino;
+	return (unsigned int) (uint64_t) fs + (unsigned int) ino;
 };
 
 static Inode* vfsAllocInode(FileSystem *fs)
@@ -160,7 +160,7 @@ static Inode* vfsAllocInode(FileSystem *fs)
 
 Inode* vfsInodeGet(FileSystem *fs, ino_t ino, errno_t *err)
 {
-	int hash = vfsInodeHash(fs, ino) % VFS_INODETAB_NUM_BUCKETS;
+	unsigned int hash = vfsInodeHash(fs, ino) % VFS_INODETAB_NUM_BUCKETS;
 	Inode *inode;
 
 	mutexLock(&vfsInodeTableLock);
@@ -230,9 +230,9 @@ Inode* vfsGetFileSystemRoot(FileSystem *fs, errno_t *err)
 /**
  * Calculate the hash of a dentry, for lookup on the dentry hashtable.
  */
-static int vfsDentryHash(FileSystem *fs, ino_t parent, const char *name)
+static unsigned int vfsDentryHash(FileSystem *fs, ino_t parent, const char *name)
 {
-	int hash = (int) (uint64_t) fs + (int) parent;
+	unsigned int hash = (unsigned int) (uint64_t) fs + (unsigned int) parent;
 	while (*name != 0)
 	{
 		hash <<= 7;
@@ -278,7 +278,7 @@ Dentry* vfsDentryGet(Inode *dir, const char *name, errno_t *err)
 		return NULL;
 	};
 
-	int hash = vfsDentryHash(dir->fs, dir->ino, name) % VFS_DENTRYTAB_NUM_BUCKETS;
+	unsigned int hash = vfsDentryHash(dir->fs, dir->ino, name) % VFS_DENTRYTAB_NUM_BUCKETS;
 	mutexLock(&vfsDentryTableLock);
 
 	Dentry *dent;
@@ -331,6 +331,59 @@ static void vfsInodeInitAndInherit(Inode *parent, Inode *child, mode_t mode)
 	// TODO: other stuff like UID etc
 };
 
+static Inode* vfsCreateChildNode(Inode *parent, const char *basename, mode_t mode, errno_t *err)
+{
+	Inode *child = vfsAllocInode(parent->fs);
+	if (child == NULL)
+	{
+		if (err != NULL) *err = ENOMEM;
+		return NULL;
+	};
+
+	Dentry *dent = vfsAllocDentry(parent, basename);
+	if (dent == NULL)
+	{
+		// TODO: proper uncaching etc of child
+		kfree(child);
+		if (err != NULL) *err = ENOMEM;
+		return NULL;
+	};
+
+	vfsInodeInitAndInherit(parent, child, mode);
+
+	mutexLock(&vfsInodeTableLock);
+	mutexLock(&vfsDentryTableLock);
+
+	int status = parent->fs->driver->makeNode(parent, dent, child);
+	if (status == 0)
+	{
+		unsigned int ihash = vfsInodeHash(child->fs, child->ino) % VFS_INODETAB_NUM_BUCKETS;
+		child->next = vfsInodeTable[ihash];
+		if (child->next != NULL) child->next->prev = child;
+		vfsInodeTable[ihash] = child;
+
+		unsigned int dhash = vfsDentryHash(child->fs, parent->ino, dent->name) % VFS_DENTRYTAB_NUM_BUCKETS;
+		dent->next = vfsDentryTable[dhash];
+		if (dent->next != NULL) dent->next->prev = dent;
+		vfsDentryTable[dhash] = dent;
+	};
+
+	mutexUnlock(&vfsDentryTableLock);
+	mutexUnlock(&vfsInodeTableLock);
+
+	if (status != 0)
+	{
+		// TODO: proper uncaching etc
+		kfree(child);
+		kfree(dent);
+		if (err != NULL) *err = -status;
+		return NULL;
+	};
+
+	vfsDentryUnref(dent);	
+	return child;
+};
+
 int vfsCreateDirectory(File *fp, const char *path, mode_t mode)
 {
 	char *dirname = vfsDirName(path);
@@ -363,71 +416,142 @@ int vfsCreateDirectory(File *fp, const char *path, mode_t mode)
 	{
 		vfsPathWalkerDestroy(&walker);
 		kfree(basename);
-		return -status;
+		return status;
 	};
 
 	Inode *parent = vfsInodeDup(walker.current);
 	vfsPathWalkerDestroy(&walker);
 
-	if (!vfsInodeAccess(parent, VFS_ACCESS_WRITE))
+	if (!vfsInodeAccess(parent, VFS_ACCESS_WRITE | VFS_ACCESS_EXEC))
 	{
 		vfsInodeUnref(parent);
 		kfree(basename);
 		return -EACCES;
 	};
 
-	Inode *child = vfsAllocInode(parent->fs);
+	errno_t err;
+	Inode *child = vfsCreateChildNode(parent, basename, (mode & ~vfsGetCurrentUmask() & 0777) | VFS_MODE_DIRECTORY, &err);
+	kfree(basename);
+	vfsInodeUnref(parent);
+
 	if (child == NULL)
 	{
-		vfsInodeUnref(parent);
-		kfree(basename);
-		return -ENOMEM;
-	};
-
-	Dentry *dent = vfsAllocDentry(parent, basename);
-	kfree(basename);
-
-	if (dent == NULL)
+		return -err;
+	}
+	else
 	{
-		vfsInodeUnref(parent);
-		// TODO: proper uncaching etc of child
-		kfree(child);
-		return -ENOMEM;
+		vfsInodeUnref(child);
+		return 0;
 	};
+};
 
-	vfsInodeInitAndInherit(parent, child, (mode & ~vfsGetCurrentUmask() & 0777) | VFS_MODE_DIRECTORY);
-
-	mutexLock(&vfsInodeTableLock);
-	mutexLock(&vfsDentryTableLock);
-
-	status = parent->fs->driver->makeNode(parent, dent, child);
-	if (status == 0)
+struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t mode, errno_t *err)
+{
+	if ((oflags & O_RDWR) == 0)
 	{
-		int ihash = vfsInodeHash(child->fs, child->ino) % VFS_INODETAB_NUM_BUCKETS;
-		child->next = vfsInodeTable[ihash];
-		if (child->next != NULL) child->next->prev = child;
-		vfsInodeTable[ihash] = child;
-
-		int dhash = vfsDentryHash(child->fs, parent->ino, dent->name) % VFS_DENTRYTAB_NUM_BUCKETS;
-		dent->next = vfsDentryTable[dhash];
-		if (dent->next != NULL) dent->next->prev = dent;
-		vfsDentryTable[dhash] = dent;
+		// neither the read nor the write flag was set
+		if (err != NULL) *err = EINVAL;
+		return NULL;
 	};
 
-	mutexUnlock(&vfsDentryTableLock);
-	mutexUnlock(&vfsInodeTableLock);
+	char *dirname = vfsDirName(path);
+	if (dirname == NULL)
+	{
+		if (err != NULL) *err = ENOMEM;
+		return NULL;
+	};
 
-	vfsInodeUnref(parent);
+	char *basename = vfsBaseName(path);
+	if (basename == NULL)
+	{
+		kfree(dirname);
+		if (err != NULL) *err = ENOMEM;
+		return NULL;
+	};
+
+	PathWalker walker;
+	if (start == NULL)
+	{
+		walker = vfsPathWalkerGetCurrentDir();
+	}
+	else
+	{
+		walker = vfsPathWalkerDup(&start->walker);
+	};
+
+	int status = vfsWalk(&walker, dirname);
+	kfree(dirname);
 
 	if (status != 0)
 	{
-		// TODO: proper uncaching etc
-		kfree(child);
-		kfree(dent);
+		vfsPathWalkerDestroy(&walker);
+		kfree(basename);
+		if (err != NULL) *err = -status;
+		return NULL;
 	};
 
+	int rights = VFS_ACCESS_EXEC;
+	if (oflags & O_CREAT) rights |= VFS_ACCESS_WRITE;
+
+	if (!vfsInodeAccess(walker.current, rights))
+	{
+		kfree(basename);
+		if (err != NULL) *err = -status;
+		vfsPathWalkerDestroy(&walker);
+		return NULL;
+	};
+
+	errno_t derr;
+	Dentry *dent = vfsDentryGet(walker.current, basename, &derr);
+	if (err != NULL) *err = derr;
+
+	Inode *child;
+	if (dent == NULL && derr == ENOENT && (oflags & O_CREAT))
+	{
+		child = vfsCreateChildNode(walker.current, basename, mode & ~vfsGetCurrentUmask() & 0777, err);
+	}
+	else if (dent != NULL && (oflags & O_EXCL))
+	{
+		vfsDentryUnref(dent);
+		if (err != NULL) *err = EEXIST;
+		child = NULL;
+	}
+	else if (dent == NULL)
+	{
+		child = NULL;
+	}
+	else
+	{
+		child = vfsInodeGet(walker.current->fs, dent->target, err);
+		if (child != NULL)
+		{
+			int rights = VFS_ACCESS_READ;
+			if (oflags & O_WRONLY) rights |= VFS_ACCESS_WRITE;
+
+			if (!vfsInodeAccess(child, rights))
+			{
+				vfsInodeUnref(child);
+				if (err != NULL) *err = EACCES;
+				child = NULL;
+			};
+		};
+	};
+
+	kfree(basename);
+
+	if (child == NULL)
+	{
+		// we could not find/create the inode, err is already set
+		vfsPathWalkerDestroy(&walker);
+		return NULL;
+	};
+
+	// walk the walker to the child
+	vfsWalkToChild(&walker, child);
 	vfsInodeUnref(child);
-	vfsDentryUnref(dent);
-	
-	return status;
+
+	// try to open
+	File *fp = vfsOpenInode(&walker, oflags, err);
+	vfsPathWalkerDestroy(&walker);
+	return fp;
 };

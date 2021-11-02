@@ -76,12 +76,11 @@ typedef struct File_
 } File;
 
 /**
- * Create an open file description referring to an inode. Attempts to open with the specified oflags
- * (`O_*`); results in a `EACCES` error if we were not granted the appropriate access rights.
+ * Create an open file description referring to an inode. Access rights are NOT checked.
  * Returns the file description on success, or NULL on error. If NULL is returned, and `err` is not
  * NULL, then the error number is stored there.
  * 
- * If successful, this function takes its own reference to the inode.
+ * If successful, this function takes its own reference to the `walker`.
  */
 File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err);
 
