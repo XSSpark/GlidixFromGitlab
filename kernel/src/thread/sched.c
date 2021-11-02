@@ -479,3 +479,17 @@ int schedHaveReadySigs()
 
 	return !!ready;
 };
+
+uid_t schedGetEffectiveUID()
+{
+	Thread *me = schedGetCurrentThread();
+	if (me->proc == NULL) return 0;
+	else return me->proc->euid;
+};
+
+gid_t schedGetEffectiveGID()
+{
+	Thread *me = schedGetCurrentThread();
+	if (me->proc == NULL) return 0;
+	else return me->proc->egid;
+};
