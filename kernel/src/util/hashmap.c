@@ -42,7 +42,7 @@ HashMap* hmNew()
 	return hm;
 };
 
-static int hmHash(const char *key)
+static unsigned int hmHash(const char *key)
 {
 	int result = 0xABCD1234;
 
@@ -73,7 +73,7 @@ void hmDestroy(HashMap *hm)
 
 void* hmGet(HashMap *hm, const char *key)
 {
-	int hash = hmHash(key) % HM_NUM_BUCKETS;
+	unsigned int hash = hmHash(key) % HM_NUM_BUCKETS;
 
 	HashMapEntry *ent;
 	for (ent=hm->buckets[hash]; ent!=NULL; ent=ent->next)
@@ -89,7 +89,7 @@ void* hmGet(HashMap *hm, const char *key)
 
 int hmSet(HashMap *hm, const char *key, void *value)
 {
-	int hash = hmHash(key) % HM_NUM_BUCKETS;
+	unsigned int hash = hmHash(key) % HM_NUM_BUCKETS;
 
 	HashMapEntry *ent;
 	for (ent=hm->buckets[hash]; ent!=NULL; ent=ent->next)
