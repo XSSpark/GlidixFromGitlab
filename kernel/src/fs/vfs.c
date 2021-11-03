@@ -332,6 +332,7 @@ static void vfsInodeInitAndInherit(Inode *parent, Inode *child, mode_t mode)
 	child->mode = mode;
 	child->uid = schedGetEffectiveUID();
 	child->gid = schedGetEffectiveGID();
+	child->parentIno = parent->ino;
 	// TODO: other stuff like UID etc
 };
 

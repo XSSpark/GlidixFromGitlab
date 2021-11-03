@@ -78,6 +78,9 @@ static int ramfsLoadInode(FileSystem *fs, Inode *inode, ino_t ino)
 
 	// indicate that the inode is non-cacheable
 	inode->flags = VFS_INODE_NOCACHE;
+
+	// the root directory is its own parent
+	inode->parentIno = RAMFS_ROOT_INO;
 	
 	return 0;
 };

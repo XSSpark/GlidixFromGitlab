@@ -145,7 +145,19 @@ int vfsWalk(PathWalker *walker, const char *path)
 			// the "." entry, points back to itself, so just continue
 			continue;
 		}
-		// TODO: ".."
+		else if (strcmp(nextToken, "..") == 0)
+		{
+			// the ".." entry, so go up
+			Inode *nextInode = vfsInodeGet(walker->current->fs, walker->current->parentIno, &err);
+			if (nextInode == NULL)
+			{
+				kfree(pbuf);
+				return -err;
+			};
+
+			vfsInodeUnref(walker->current);
+			walker->current = nextInode;
+		}
 		else
 		{
 			Dentry *dent = vfsDentryGet(walker->current, nextToken, &err);

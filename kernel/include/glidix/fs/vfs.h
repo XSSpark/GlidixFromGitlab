@@ -264,6 +264,11 @@ struct Inode_
 	PageCacheNode *pageCacheMaster;
 
 	/**
+	 * Parent inode. This is only applicable if this inode is a directory.
+	 */
+	ino_t parentIno;
+
+	/**
 	 * Char array at the end, this is where `drvdata` will be allocated.
 	 */
 	char end[];
