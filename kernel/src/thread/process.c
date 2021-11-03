@@ -45,6 +45,20 @@ static Mutex procTableLock;
  */
 static TreeMap* procTable;
 
+/**
+ * The anonymous mapping. This is a special mapping description, with the refcount being initialized
+ * to one and hence never released. This single object can be reused for ALL anonymous mappings,
+ * as there is no associated file and when we fault we just read out all-zeroes.
+ */
+static ProcessMapping procAnonMapping = {
+	.refcount = 1,
+	.inode = NULL,
+	.addr = 0,
+	.offset = 0,
+	.oflags = O_RDWR,
+	.mflags = MAP_PRIVATE | MAP_ANON,
+};
+
 static void procInit()
 {
 	kprintf("Initializing the process table...\n");
@@ -65,6 +79,7 @@ void procUnref(Process *proc)
 		// TODO: delete all the pages
 		komReleaseBlock(proc->pagetabVirt, KOM_BUCKET_PAGE);
 		treemapDestroy(proc->threads);
+		treemapDestroy(proc->mappingTree);
 		vfsPathWalkerDestroy(&proc->rootDir);
 		vfsPathWalkerDestroy(&proc->currentDir);
 		kfree(proc);
@@ -94,6 +109,21 @@ static void procStartup(void *context_)
 
 	func(param);
 	panic("can't return from thread func yet!!");
+};
+
+static ProcessMapping* procMappingDup(ProcessMapping *mapping)
+{
+	__sync_add_and_fetch(&mapping->refcount, 1);
+	return mapping;
+};
+
+static void procMappingUnref(ProcessMapping *mapping)
+{
+	if (__sync_add_and_fetch(&mapping->refcount, -1) == 0)
+	{
+		vfsInodeUnref(mapping->inode);
+		kfree(mapping);
+	};
 };
 
 pid_t procCreate(KernelThreadFunc func, void *param)
@@ -130,9 +160,20 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 		return -ENOMEM;
 	};
 
+	// allocate the mapping tree
+	TreeMap *mappingTree = treemapNew();
+	if (mappingTree == NULL)
+	{
+		treemapDestroy(threads);
+		kfree(child);
+		kfree(info);
+		return -ENOMEM;
+	};
+
 	// pre-allocate memory for the '1' entry
 	if (treemapSet(threads, 1, NULL) != 0)
 	{
+		treemapDestroy(mappingTree);
 		treemapDestroy(threads);
 		kfree(child);
 		kfree(info);
@@ -147,6 +188,7 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 
 	if (newPML4 == NULL)
 	{
+		treemapDestroy(mappingTree);
 		treemapDestroy(threads);
 		kfree(child);
 		kfree(info);
@@ -169,6 +211,7 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	memset(child, 0, sizeof(Process));
 	child->cr3 = pagetabGetPhys(myPML4);
 	child->pagetabVirt = newPML4;
+	child->mappingTree = mappingTree;
 	child->parent = me->proc == NULL ? 1 : me->proc->pid;
 	
 	if (me->proc != NULL)
@@ -232,4 +275,187 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	mutexUnlock(&procTableLock);
 	schedDetachKernelThread(startupThread);
 	return pid;
+};
+
+/**
+ * Get the page table entry for memory address `addr`. Call this only when the pagemap lock is acquired.
+ * If the PTE does not yet exist, it will be as unmapped. NULL is returned if the PTE does not exist and
+ * we have furthermore ran out of memory.
+ */
+static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
+{
+	PageNodeEntry *nodes[4];
+	pagetabGetNodes((void*)addr, nodes);
+
+	int i;
+	for (i=0; i<3; i++)
+	{
+		PageNodeEntry *node = nodes[i];
+		if (node->value == 0)
+		{
+			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+			if (nextLevel == NULL)
+			{
+				return NULL;
+			};
+
+			memset(nextLevel, 0, PAGE_SIZE);
+
+			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
+			// so that we can set these per-page without worrying about the higher levels
+			node->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;
+
+			// invalidate the next node to apply the above
+			invlpg(nodes[i+1]);
+		};
+	};
+
+	return nodes[3];
+};
+
+user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err)
+{
+	if (addr == 0 && (flags & MAP_FIXED) == 0)
+	{
+		// TODO: allocate address space automatically!
+		if (err != NULL) *err = EOPNOTSUPP;
+		return MAP_FAILED;
+	};
+
+	if ((addr & 0xFFF) || (offset & 0xFFF) || length > PROC_USER_ADDR_MAX || addr > PROC_USER_ADDR_MAX
+		|| (addr+length) > PROC_USER_ADDR_MAX || length == 0)
+	{
+		// not page-aligned, or not within range
+		if (err != NULL) *err = EINVAL;
+		return MAP_FAILED;
+	};
+
+	if ((prot & PROT_ALL) != prot)
+	{
+		// invalid prot set
+		if (err != NULL) *err = EINVAL;
+		return MAP_FAILED;
+	};
+
+	if ((flags & MAP_ALLFLAGS) != flags)
+	{
+		// invalid flags set
+		if (err != NULL) *err = EINVAL;
+		return MAP_FAILED;
+	};
+
+	int mappingType = flags & (MAP_PRIVATE | MAP_SHARED);
+	if (mappingType != MAP_PRIVATE && mappingType != MAP_SHARED)
+	{
+		// exactly one of MAP_PRIVATE or MAP_SHARED must be set in flags, but isn't
+		if (err != NULL) *err = EINVAL;
+		return MAP_FAILED;
+	};
+
+	if ((flags & MAP_ANON && fp != NULL) || ((flags & MAP_ANON) == 0 && fp == NULL))
+	{
+		// with anonymous mapings, the file pointer must be NULL, and with non-anonymous
+		// mappings, it must not be NULL
+		if (err != NULL) *err = EBADF;
+		return MAP_FAILED;
+	};
+
+	if (fp != NULL)
+	{
+		if ((fp->walker.current->mode & VFS_MODE_TYPEMASK) != VFS_MODE_REGULAR)
+		{
+			// mapping something other than a regular file
+			if (err != NULL) *err = EACCES;
+			return MAP_FAILED;
+		};
+
+		if ((fp->oflags & O_RDONLY) == 0)
+		{
+			// file is not open for reading
+			if (err != NULL) *err = EACCES;
+			return MAP_FAILED;
+		};
+
+		if (mappingType == MAP_SHARED && (prot & PROT_WRITE) && (fp->oflags & O_WRONLY) == 0)
+		{
+			// requesting shared write access but file is not open for writing
+			if (err != NULL) *err = EACCES;
+			return MAP_FAILED;
+		};
+	};
+
+	// get the current process
+	Process *proc = schedGetCurrentThread()->proc;
+
+	// figure out what mapping to use; for anonymous, we use the global 'anonymous' mapping as
+	// it's identical in all contexts, otherwise allocate our own mapping description
+	ProcessMapping *mapping;
+	if (fp == NULL)
+	{
+		mapping = procMappingDup(&procAnonMapping);
+	}
+	else
+	{
+		mapping = (ProcessMapping*) kmalloc(sizeof(ProcessMapping));
+		if (mapping == NULL)
+		{
+			if (err != NULL) *err = ENOMEM;
+			return MAP_FAILED;
+		};
+
+		mapping->refcount = 1;
+		mapping->addr = addr;
+		mapping->offset = offset;
+		mapping->oflags = fp->oflags;
+		mapping->inode = vfsInodeDup(fp->walker.current);
+		mapping->mflags = flags;
+	};
+
+	// now we map
+	user_addr_t scan;
+	errno_t status = 0;
+
+	mutexLock(&proc->mapLock);
+	for (scan=addr; scan<addr+length; scan+=PAGE_SIZE)
+	{
+		// get the page and fail with ENOMEM if we can't
+		PageNodeEntry *pte = _procGetPageTableEntry(scan);
+		if (pte == NULL)
+		{
+			status = ENOMEM;
+			break;
+		};
+
+		if (pte->value != 0)
+		{
+			// TODO
+			panic("I don't know how to clean up the PTE yet!");
+		};
+
+		// try to map into the page mapping tree
+		uint32_t pageIndex = (scan >> 12);
+		ProcessMapping *old = (ProcessMapping*) treemapGet(proc->mappingTree, pageIndex);
+		status = treemapSet(proc->mappingTree, pageIndex, mapping);
+		if (status != 0) break;
+
+		// upref the new mapping and downref the old
+		procMappingDup(mapping);
+		if (old != NULL) procMappingUnref(old);
+	};
+	mutexUnlock(&proc->mapLock);
+
+	// get rid of our initial reference
+	procMappingUnref(mapping);
+
+	// tell other CPUs that this CR3 is invalidated
+	cpuInvalidateCR3(proc->cr3);
+
+	if (status != 0)
+	{
+		// an error occured
+		if (err != NULL) *err = status;
+		return MAP_FAILED;
+	};
+
+	return addr;
 };

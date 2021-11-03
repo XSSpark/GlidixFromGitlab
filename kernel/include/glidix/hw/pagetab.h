@@ -31,6 +31,7 @@
 
 #include <glidix/util/common.h>
 #include <glidix/util/errno.h>
+#include <glidix/hw/cpu.h>
 
 // TODO: when mapping, lock pages!
 
@@ -138,6 +139,7 @@ static inline uint64_t pagetabGetCR3()
  */
 static inline void pagetabSetCR3(uint64_t cr3)
 {
+	cpuGetCurrent()->currentCR3 = cr3;
 	ASM ("mov %0, %%cr3" : : "a" (cr3));
 };
 

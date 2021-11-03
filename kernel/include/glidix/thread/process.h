@@ -32,6 +32,7 @@
 #include <glidix/thread/sched.h>
 #include <glidix/fs/vfs.h>
 #include <glidix/fs/path.h>
+#include <glidix/fs/file.h>
 
 /**
  * The kernel init action for initialising the process table and starting `init`.
@@ -42,6 +43,44 @@
  * Maximum number of processes allowed.
  */
 #define	PROC_MAX						(1 << 24)
+
+/**
+ * Maximum address for userspace mappings.
+ * 
+ * This is set to be 44 bits long, so that upon discarding the bottom 12 bits, we get a
+ * 32-bit 'page index', which we are using with a treemap. The implementation of the mapping
+ * tree must change if we want to make this longer.
+ */
+#define	PROC_USER_ADDR_MAX					(1UL << 44)
+
+/**
+ * Protection settings.
+ */
+#ifndef PROT_READ
+#define	PROT_READ						(1 << 0)
+#define	PROT_WRITE						(1 << 1)
+#define	PROT_EXEC						(1 << 2)
+#define	PROT_ALL						((1 << 3)-1)
+#endif
+
+/**
+ * Only define those if they weren't yet defined, since we might have been included by
+ * a userspace application with <sys/mman.h> already included.
+ */
+#ifndef MAP_FAILED
+#define	MAP_PRIVATE						(1 << 0)
+#define	MAP_SHARED						(1 << 1)
+#define	MAP_ANON						(1 << 2)
+#define	MAP_FIXED						(1 << 3)
+#define	MAP_ALLFLAGS						((1 << 4)-1)
+#define	MAP_FAILED						((uint64_t)-1)
+#endif
+
+/**
+ * Type representing a userspace address. Never cast these to pointers, as userspace addresses
+ * are NOT to be trusted!
+ */
+typedef uint64_t user_addr_t;
 
 /**
  * Process startup information.
@@ -70,6 +109,45 @@ typedef struct
 } ProcessStartupInfo;
 
 /**
+ * Represents a process memory mapping. These objects are immutable, except for the `refcount`
+ * field, and so can be reused when forking etc.
+ */
+typedef struct
+{
+	/**
+	 * The refcount. This basically indicates how many pages across any number of processes
+	 * are using this exact mapping.
+	 */
+	int refcount;
+
+	/**
+	 * The file open flags (`O_*`, this is used to control when we can set prots etc).
+	 */
+	int oflags;
+
+	/**
+	 * The inode. We are holding a reference to it, and this will be unreffed once this mapping
+	 * is unmapped from all pages. This is NULL in the special "anonymous mapping".
+	 */
+	Inode *inode;
+
+	/**
+	 * The user base address where this mapping begins (i.e. corresponds to `offset`).
+	 */
+	user_addr_t addr;
+
+	/**
+	 * The offset within the inode (corresponding to `addr`).
+	 */
+	off_t offset;
+
+	/**
+	 * Mapping flags (`MAP_*`).
+	 */
+	int mflags;
+} ProcessMapping;
+
+/**
  * Represents a process (a collection of userspace threads sharing a single address space).
  */
 struct Process_
@@ -83,6 +161,16 @@ struct Process_
 	 * Pointer to the page table KOM object.
 	 */
 	void *pagetabVirt;
+
+	/**
+	 * Tree map, mapping "page indices" to a `ProcessMapping*`.
+	 */
+	TreeMap *mappingTree;
+
+	/**
+	 * Mutex protecting the address space.
+	 */
+	Mutex mapLock;
 
 	/**
 	 * Parent process ID.
@@ -114,7 +202,7 @@ struct Process_
 	 * Lock protecting the root and current dirs.
 	 */
 	Mutex dirLock;
-	
+
 	/**
 	 * Path walker pointing to the root directory.
 	 */
@@ -165,5 +253,31 @@ pid_t procCreate(KernelThreadFunc func, void *param);
  * Decrement the refcount of a process object.
  */
 void procUnref(Process *proc);
+
+/**
+ * Create a file mapping or an anonymous mapping in the address space of the calling process.
+ * 
+ * `addr` must be page-aligned, and `addr+length` must not exceed `PROC_USER_ADDR_MAX`. The mapping
+ * will always be made at the requested address, with one exception depending on whether `MAP_FIXED`
+ * is set in `flags`. If `MAP_FIXED` is set, `addr` will always be the address used, and you can even
+ * map NULL. If `MAP_FIXED` is not set, then if `addr` is zero, the kernel will automatically allocate
+ * enough address space to fix `length` without overlapping existing segments.
+ * 
+ * If `MAP_ANON` is set in `flags`, `fp` must be NULL and `offset` is ignored. In this case, an anonymous
+ * mapping is created, and accessing the mapped memory range will initially read zeroes. If `MAP_ANON` is
+ * not set in `flags`, then `fp` must not be NULL, and `offset` must be a page-aligned offset in the file.
+ * Accessing the mapped range in this case initally reads the contents of the file at the corresponding offset.
+ * 
+ * Either `MAP_PRIVATE` or `MAP_SHARED` must be set in `flags`. If `MAP_PRIVATE` is set, then the mapping
+ * is private; any modification to the contents of the pages is visible only to the current process, and is
+ * not committed to disk. On the other hand, with a `MAP_SHARED` mapping, changes will be visible to all
+ * processes which map the same file as shared, and the changes will be committed to disk.
+ * 
+ * If the function fails and returns an error, some of the requested address space might be mapped.
+ * 
+ * On success, this function will return the user address where the new mapping begins (which might be zero).
+ * On error, `MAP_FAILED` is returned, and if `err` is not NULL, the error number is stored there.
+ */
+user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err);
 
 #endif

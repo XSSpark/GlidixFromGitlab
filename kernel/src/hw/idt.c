@@ -39,6 +39,7 @@
 #include <glidix/hw/cpu.h>
 #include <glidix/hw/fpu.h>
 #include <glidix/hw/idt.h>
+#include <glidix/hw/pagetab.h>
 
 IDTEntry idt[256];
 IDTPointer idtPtr;
@@ -312,6 +313,13 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 		{
 			schedPreempt();
 		};
+	}
+	else if (regs->intNo == I_IPI_PAGETAB_INVL)
+	{
+		apic.eoi = 0;
+		__sync_synchronize();
+
+		ASM ("mov %%cr3, %%rax ; mov %%rax, %%cr3" : : : "%rax");
 	}
 	else if (regs->intNo == IRQ0)
 	{

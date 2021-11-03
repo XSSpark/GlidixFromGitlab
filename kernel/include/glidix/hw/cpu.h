@@ -115,6 +115,13 @@ struct CPU_
 	 * thread and all other kernel threads.
 	 */
 	uint64_t kernelCR3;
+
+	/**
+	 * The current CR3 set on this CPU. The CPU will set this field just before
+	 * it actually switches to this CR3, and this is used so we know who to send
+	 * the page table invalidation IPI to.
+	 */
+	volatile uint64_t currentCR3;
 };
 
 /**
@@ -215,5 +222,10 @@ int cpuGetMyIndex();
  * Get the CPU with the specified index.
  */
 CPU* cpuGetIndex(int index);
+
+/**
+ * Invalidate the specified CR3.
+ */
+void cpuInvalidateCR3(uint64_t cr3);
 
 #endif

@@ -87,14 +87,12 @@ void* treemapGet(TreeMap *map, uint32_t index);
 
 /**
  * Set a pointer at the specified index in the map. If the `ptr` is NULL, then
- * the entry is treated as deleted (as `treemapGet()` wil lbe returning NULL
+ * the entry is treated as deleted (as `treemapGet()` will be returning NULL
  * for this entry).
  * 
  * Returns 0 on success, or an error number on error.
  * 
  * `ENOMEM` is returned if memory allocation wasn't possible.
- * 
- * If `old` is not NULL, then the old pointer is stored in it.
  */
 errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr);
 

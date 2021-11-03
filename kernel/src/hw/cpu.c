@@ -295,3 +295,19 @@ CPU* cpuGetIndex(int index)
 {
 	return &cpuList[index];
 };
+
+void cpuInvalidateCR3(uint64_t cr3)
+{
+	CPU *me = cpuGetCurrent();
+
+	int i;
+	for (i=0; i<nextCPUIndex; i++)
+	{
+		CPU *cpu = &cpuList[i];
+		if (cpu->currentCR3 == cr3 && cpu != me)
+		{
+			cpuSendInterrupt(cpu->apicID, I_IPI_PAGETAB_INVL | APIC_ICR_INITDEAS_NO);
+			while (apic.icr & APIC_ICR_PENDING) __sync_synchronize();
+		};
+	};
+};
