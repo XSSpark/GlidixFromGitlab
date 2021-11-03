@@ -62,6 +62,7 @@ typedef	int64_t					time_t;
 typedef	int64_t					off_t;
 typedef	int64_t					ssize_t;
 typedef int					pid_t;
+typedef int					thid_t;
 #endif
 
 #endif

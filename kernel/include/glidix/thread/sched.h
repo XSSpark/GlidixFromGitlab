@@ -57,7 +57,7 @@ typedef void (*KernelThreadFunc)(void *param);
  * Typedef all the structs here.
  */
 typedef	struct Thread_ Thread;
-typedef struct Process_ Process;
+typedef struct Process_ Process;			// process.h
 typedef struct Runqueue_ Runqueue;
 
 /**
@@ -123,43 +123,14 @@ struct Thread_
 	ksiginfo_t sigInfo[SIG_NUM];
 
 	/**
-	 * The value of MSBASE for this thread.
+	 * The value of FSBASE for this thread.
 	 */
 	uint64_t fsbase;
-};
-
-/**
- * Represents a process (a collection of userspace threads sharing a single address space).
- */
-struct Process_
-{
-	/**
-	 * Physical address of the page table.
-	 */
-	uint64_t cr3;
 
 	/**
-	 * The process ID. Note that there is a race condition between the process being added to
-	 * the process table, and this field being set; and as such, it should only actually be
-	 * used by the `getpid()` system call.
+	 * The thread ID (only applicable to userspace threads).
 	 */
-	pid_t pid;
-
-	/**
-	 * Set of pending signals for this process (will be dispatched to an arbitrary thread).
-	 */
-	ksigset_t sigPending;
-
-	/**
-	 * For each pending signal, the signal information.
-	 */
-	ksiginfo_t sigInfo[SIG_NUM];
-
-	/**
-	 * UIDs and GIDs.
-	 */
-	uid_t euid, suid, ruid;
-	gid_t egid, sgid, rgid;
+	thid_t thid;
 };
 
 /**
@@ -267,5 +238,10 @@ uid_t schedGetEffectiveUID();
  * Get the effective group ID of the current process. Kernel is always root.
  */
 gid_t schedGetEffectiveGID();
+
+/**
+ * Set FSBASE for the calling thread.
+ */
+void schedSetFSBase(uint64_t fsbase);
 
 #endif

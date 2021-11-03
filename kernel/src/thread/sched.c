@@ -37,6 +37,7 @@
 #include <glidix/hw/idt.h>
 #include <glidix/hw/pagetab.h>
 #include <glidix/hw/msr.h>
+#include <glidix/thread/process.h>
 
 /**
  * The global scheduler lock.
@@ -492,4 +493,10 @@ gid_t schedGetEffectiveGID()
 	Thread *me = schedGetCurrentThread();
 	if (me->proc == NULL) return 0;
 	else return me->proc->egid;
+};
+
+void schedSetFSBase(uint64_t fsbase)
+{
+	schedGetCurrentThread()->fsbase = fsbase;
+	wrmsr(MSR_FS_BASE, fsbase);
 };
