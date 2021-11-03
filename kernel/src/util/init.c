@@ -41,6 +41,7 @@
 #include <glidix/util/string.h>
 #include <glidix/util/panic.h>
 #include <glidix/hw/pagetab.h>
+#include <glidix/thread/process.h>
 
 /**
  * The terminator of the kernel init action list, see `kernel.ld` for an
@@ -96,6 +97,11 @@ static void kiaRun(const char *name)
 
 	// complete now
 	kia->complete = 1;
+};
+
+static void userspaceInit()
+{
+	panic("Failed to exec init!");
 };
 
 void kmain(KernelBootInfo *info)
@@ -170,7 +176,13 @@ void kmain(KernelBootInfo *info)
 		kiaRun(kia->links[0]);
 	};
 
-	kprintf("Kernel init done.\n");
+	kprintf("Kernel init done, starting userspace init...\n");
+
+	pid_t pid = procCreate(userspaceInit, NULL);
+	if (pid < 0)
+	{
+		panic("Failed to create init process: error %d", -pid);
+	};
 
 	// now yield to other threads
 	while (1)
