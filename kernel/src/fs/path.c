@@ -33,6 +33,7 @@
 #include <glidix/util/init.h>
 #include <glidix/util/string.h>
 #include <glidix/util/memory.h>
+#include <glidix/thread/process.h>
 
 /**
  * The kernel root walker.
@@ -73,16 +74,34 @@ void vfsPathWalkerDestroy(PathWalker *walker)
 
 PathWalker vfsPathWalkerGetCurrentDir()
 {
-	// TODO: get the current working directory for the process, instead of always
-	// defaulting to the kernel root!
-	return vfsPathWalkerDup(&vfsKernelRootWalker);
+	Process *proc = schedGetCurrentThread()->proc;
+	if (proc == NULL)
+	{
+		return vfsPathWalkerDup(&vfsKernelRootWalker);
+	}
+	else
+	{
+		mutexLock(&proc->dirLock);
+		PathWalker root = vfsPathWalkerDup(&proc->currentDir);
+		mutexUnlock(&proc->dirLock);
+		return root;
+	};
 };
 
 PathWalker vfsPathWalkerGetRoot()
 {
-	// TODO: get the root directory for the process, instead of always defaulting
-	// to the kernel root!
-	return vfsPathWalkerDup(&vfsKernelRootWalker);
+	Process *proc = schedGetCurrentThread()->proc;
+	if (proc == NULL)
+	{
+		return vfsPathWalkerDup(&vfsKernelRootWalker);
+	}
+	else
+	{
+		mutexLock(&proc->dirLock);
+		PathWalker root = vfsPathWalkerDup(&proc->rootDir);
+		mutexUnlock(&proc->dirLock);
+		return root;
+	};
 };
 
 int vfsWalk(PathWalker *walker, const char *path)

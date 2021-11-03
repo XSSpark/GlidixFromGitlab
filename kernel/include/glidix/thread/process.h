@@ -111,6 +111,11 @@ struct Process_
 	gid_t egid, sgid, rgid;
 
 	/**
+	 * Lock protecting the root and current dirs.
+	 */
+	Mutex dirLock;
+	
+	/**
 	 * Path walker pointing to the root directory.
 	 */
 	PathWalker rootDir;
