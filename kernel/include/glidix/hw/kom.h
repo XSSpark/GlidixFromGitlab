@@ -67,6 +67,11 @@ typedef enum
 #define	KOM_NUM_BUCKETS					32
 
 /**
+ * Maximum number of regions.
+ */
+#define	KOM_MAX_REGIONS					64
+
+/**
  * Kernel object header.
  */
 typedef struct KOM_Header_ KOM_Header;
@@ -87,6 +92,27 @@ typedef struct
 	 */
 	KOM_Header* buckets[KOM_NUM_BUCKETS];
 } KOM_Pool;
+
+/**
+ * Represents a region of memory.
+ */
+typedef struct
+{
+	/**
+	 * Virtual base address.
+	 */
+	uint64_t virtualBase;
+
+	/**
+	 * Physical base address.
+	 */
+	uint64_t physBase;
+
+	/**
+	 * Size of the region.
+	 */
+	uint64_t size;
+} KOM_Region;
 
 /**
  * Intialize the Kernel Object Manager.
@@ -118,5 +144,11 @@ void komReleaseBlock(void *block, int bucket);
  * allocating virtual addresses statically; the returned address space can never be freed.
  */
 void* komAllocVirtual(size_t size);
+
+/**
+ * Get the virtual address from a physical address previously returned by `komAllocBlock()`.
+ * Returns NULL if the virtual address could not be found.
+ */
+void* komPhysToVirt(uint64_t phaddr);
 
 #endif

@@ -32,6 +32,7 @@
 #include <glidix/hw/pagetab.h>
 #include <glidix/util/string.h>
 #include <glidix/thread/spinlock.h>
+#include <glidix/util/panic.h>
 
 /**
  * The allocator lock.
@@ -54,6 +55,16 @@ extern char __virtMapArea[];
  * The next virtual address to return for virtual allocations.
  */
 static char* nextVirtualAddr;
+
+/**
+ * The list of regions.
+ */
+static KOM_Region regions[KOM_MAX_REGIONS];
+
+/**
+ * Current number of regions.
+ */
+static int numRegions;
 
 static void _komReleaseIntoPool(KOM_Pool *pool, KOM_Header *obj, int bucketIndex);
 
@@ -148,6 +159,17 @@ void komInit()
 			};
 
 			kprintf("0x%016lx   0x%016lx   0x%lx\n", (uint64_t) vaddr, baseAddr, len);
+
+			int regionIndex = numRegions++;
+			if (regionIndex == KOM_MAX_REGIONS)
+			{
+				panic("Exceeded the max number of regions!");
+			};
+
+			KOM_Region *region = &regions[regionIndex];
+			region->virtualBase = (uint64_t) vaddr;
+			region->physBase = baseAddr;
+			region->size = len;
 
 			uint64_t phaddr;
 			for (phaddr=baseAddr; phaddr<baseAddr+len; phaddr+=PAGE_SIZE)
@@ -368,4 +390,19 @@ void* komAllocVirtual(size_t size)
 	spinlockRelease(&komLock, irqState);
 
 	return result;
+};
+
+void* komPhysToVirt(uint64_t phaddr)
+{
+	int i;
+	for (i=0; i<numRegions; i++)
+	{
+		KOM_Region *region = &regions[i];
+		if (region->physBase+region->size >= phaddr && region->physBase < phaddr)
+		{
+			return (void*) (phaddr - region->physBase + region->virtualBase);
+		};
+	};
+
+	return NULL;
 };
