@@ -636,7 +636,7 @@ static void* _vfsGetCachePage(Inode *inode, off_t offset, int markDirty, errno_t
 	{
 		// cache miss, try to load it
 		off_t alignedOffset = offset & ~0xFFF;
-		void *page = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL & ~(KOM_POOLBIT_INODES | KOM_POOLBIT_PAGE_CACHE));
+		void *page = komAllocUserPage();
 		
 		if (page == NULL)
 		{
@@ -647,7 +647,7 @@ static void* _vfsGetCachePage(Inode *inode, off_t offset, int markDirty, errno_t
 		int status = inode->fs->driver->loadPage(inode, alignedOffset, page);
 		if (status != 0)
 		{
-			komReleaseBlock(page, KOM_BUCKET_PAGE);
+			komUserPageUnref(page);
 			if (err != NULL) *err = -status;
 			return NULL;
 		};

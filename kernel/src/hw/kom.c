@@ -33,6 +33,7 @@
 #include <glidix/util/string.h>
 #include <glidix/thread/spinlock.h>
 #include <glidix/util/panic.h>
+#include <glidix/util/memory.h>
 
 /**
  * The allocator lock.
@@ -208,8 +209,23 @@ void komInit()
 		};
 	};
 
+	kprintf("\nAllocating page information...\n");
+	for (i=0; i<numRegions; i++)
+	{
+		KOM_Region *region = &regions[i];
+		uint64_t numPages = (region->size + 0xFFF) >> 12;
+
+		region->pageInfo = (KOM_UserPageInfo*) kmalloc(sizeof(KOM_UserPageInfo) * numPages);
+		if (region->pageInfo == NULL)
+		{
+			panic("Failed to allocate page info for a region!");
+		};
+
+		memset(region->pageInfo, 0, sizeof(KOM_UserPageInfo) * numPages);
+	};
+
 	nextVirtualAddr = (char*) (((uint64_t) vaddr + 0xFFF) & ~0xFFFUL);
-	kprintf("\nStarting address for virtual allocations: 0x%p\n", nextVirtualAddr);
+	kprintf("Starting address for virtual allocations: 0x%p\n", nextVirtualAddr);
 };
 
 /**
@@ -405,4 +421,53 @@ void* komPhysToVirt(uint64_t phaddr)
 	};
 
 	return NULL;
+};
+
+static KOM_UserPageInfo* komGetUserPageInfo(void *ptr)
+{
+	uint64_t addr = (uint64_t) ptr;
+
+	int i;
+	for (i=0; i<numRegions; i++)
+	{
+		KOM_Region *region = &regions[i];
+		if (region->virtualBase+region->size >= addr && region->virtualBase < addr)
+		{
+			return &region->pageInfo[(addr - region->virtualBase) >> 12];
+		};
+	};
+
+	return NULL;
+};
+
+void* komAllocUserPage()
+{
+	void *result = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+	if (result == NULL) return NULL;
+
+	KOM_UserPageInfo *info = komGetUserPageInfo(result);
+	ASSERT(info != NULL);
+
+	info->refcount = 1;
+	return result;
+};
+
+void komUserPageUnref(void *page)
+{
+	KOM_UserPageInfo *info = komGetUserPageInfo(page);
+	ASSERT(info != NULL);
+
+	if (__sync_add_and_fetch(&info->refcount, -1) == 0)
+	{
+		komReleaseBlock(page, KOM_BUCKET_PAGE);
+	};
+};
+
+void* komUserPageDup(void *page)
+{
+	KOM_UserPageInfo *info = komGetUserPageInfo(page);
+	ASSERT(info != NULL);
+	__sync_add_and_fetch(&info->refcount, 1);
+
+	return page;
 };

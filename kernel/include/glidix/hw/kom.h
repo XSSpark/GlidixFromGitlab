@@ -94,6 +94,17 @@ typedef struct
 } KOM_Pool;
 
 /**
+ * User page information.
+ */
+typedef struct
+{
+	/**
+	 * Reference count for this page.
+	 */
+	uint64_t refcount;
+} KOM_UserPageInfo;
+
+/**
  * Represents a region of memory.
  */
 typedef struct
@@ -109,9 +120,14 @@ typedef struct
 	uint64_t physBase;
 
 	/**
-	 * Size of the region.
+	 * Size of the region in bytes.
 	 */
 	uint64_t size;
+
+	/**
+	 * Auxiliary information about the pages.
+	 */
+	KOM_UserPageInfo *pageInfo;
 } KOM_Region;
 
 /**
@@ -150,5 +166,21 @@ void* komAllocVirtual(size_t size);
  * Returns NULL if the virtual address could not be found.
  */
 void* komPhysToVirt(uint64_t phaddr);
+
+/**
+ * Allocate a user page, initially with a refcount of 1. Returns NULL if we have run out of
+ * memory.
+ */
+void* komAllocUserPage();
+
+/**
+ * Decrement the refcount on a user page, and release it if the refcount becomes zero.
+ */
+void komUserPageUnref(void *page);
+
+/**
+ * Increment the refcount on a user page, and return the page again.
+ */
+void* komUserPageDup(void *page);
 
 #endif

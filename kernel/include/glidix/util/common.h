@@ -46,6 +46,7 @@
 #define	FORMAT(a, b, c)				__attribute__ ((format(a, b, c)))
 #define	SECTION(name)				__attribute__ ((section(name)))
 #define	noreturn				_Noreturn
+#define	ASSERT(x)				if (!(x)) panic("Assertion failed: %s", #x)
 
 #ifndef	__SYSTYPES_DEFINED
 #define	__SYSTYPES_DEFINED

@@ -428,8 +428,15 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 
 		if (pte->value != 0)
 		{
-			// TODO
-			panic("I don't know how to clean up the PTE yet!");
+			void *page = komPhysToVirt(pte->value & PT_PHYS_MASK);
+			ASSERT(page != NULL);
+
+			pte->value = 0;
+
+			// since we unmapped, we must immediately inform other CPUs
+			cpuInvalidateCR3(proc->cr3);
+
+			komUserPageUnref(page);
 		};
 
 		// try to map into the page mapping tree
