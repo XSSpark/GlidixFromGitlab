@@ -578,7 +578,7 @@ void bmain()
 		};
 		
 		size = (size + 511) & ~511;
-		pos += 512 * (size + 1);
+		pos += 512 + size;
 	};
 	
 	pos += 512;
