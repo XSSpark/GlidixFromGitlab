@@ -160,6 +160,10 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	newPML4[511] = pagetabGetPhys(myPML4) | PT_PRESENT | PT_WRITE | PT_NOEXEC;
 
 	// TODO: if the calling process is non-kernel, clone the page table
+	if (me->proc != NULL)
+	{
+		panic("I don't know how to clone page tables yet!");
+	};
 
 	// fill out the process structure
 	memset(child, 0, sizeof(Process));
