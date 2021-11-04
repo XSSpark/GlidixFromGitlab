@@ -56,6 +56,33 @@ extern struct
 } PACKED GDTPointer;
 extern char idtPtr;
 
+typedef struct
+{
+	uint16_t		limitLow;
+	uint16_t		baseLow;
+	uint8_t			baseMiddle;
+	uint8_t			access;
+	uint8_t			limitHigh;
+	uint8_t			baseMiddleHigh;
+	uint32_t		baseHigh;
+} PACKED GDT_TSS_Segment;
+
+/**
+ * Get the TSS for the current CPU. This is called from assembly.
+ */
+TSS* cpuGetTSS()
+{
+	return &cpuGetCurrent()->tss;
+};
+
+/**
+ * Get the GDT for the current CPU. This is called from assembly.
+ */
+void* cpuGetGDT()
+{
+	return cpuGetCurrent()->gdt;
+};
+
 void cpuInitSelf(int index)
 {
 	CPU *me = &cpuList[index];
@@ -68,6 +95,28 @@ void cpuInitSelf(int index)
 
 	// enable the local APIC at the default base address
 	wrmsr(MSR_APIC_BASE, APIC_PHYS_BASE | APIC_BASE_ENABLE);
+
+	// set up the TSS
+	if (index == 0)
+	{
+		memcpy(me->gdt, &GDT64, (uint64_t) &GDTPointer - (uint64_t) &GDT64);
+		me->gdtPtr.base = me->gdt;
+		me->gdtPtr.limit = 63;
+	};
+
+	GDT_TSS_Segment *segTSS = (GDT_TSS_Segment*) &me->gdt[0x30];
+	segTSS->limitLow = 191;
+	segTSS->limitHigh = 0;
+	
+	uint64_t tssAddr = (uint64_t) &me->tss;
+	segTSS->baseLow = tssAddr & 0xFFFF;
+	segTSS->baseMiddle = (tssAddr >> 16) & 0xFF;
+	segTSS->baseMiddleHigh = (tssAddr >> 24) & 0xFF;
+	segTSS->baseHigh = (tssAddr >> 32) & 0xFFFFFFFF;
+	segTSS->access = 0xE9;
+
+	// reload GDT
+	ASM ("lgdt (%%rax)" : : "a" (&me->gdtPtr));
 
 	// set the spurious interrupt vector
 	apic.sivr = 0x1FF;
@@ -307,7 +356,7 @@ void cpuInvalidateCR3(uint64_t cr3)
 		if (cpu->currentCR3 == cr3 && cpu != me)
 		{
 			cpuSendInterrupt(cpu->apicID, I_IPI_PAGETAB_INVL | APIC_ICR_INITDEAS_NO);
-			while (apic.icr & APIC_ICR_PENDING) __sync_synchronize();
+			while (apic.icr & APIC_ICR_PENDING) __sync_synchronize(); // TODO: does this actually wait for EOI?
 		};
 	};
 };

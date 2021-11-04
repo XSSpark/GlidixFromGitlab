@@ -261,7 +261,7 @@ void procUnref(Process *proc);
  * will always be made at the requested address, with one exception depending on whether `MAP_FIXED`
  * is set in `flags`. If `MAP_FIXED` is set, `addr` will always be the address used, and you can even
  * map NULL. If `MAP_FIXED` is not set, then if `addr` is zero, the kernel will automatically allocate
- * enough address space to fix `length` without overlapping existing segments.
+ * enough address space to map `length` without overlapping existing segments.
  * 
  * If `MAP_ANON` is set in `flags`, `fp` must be NULL and `offset` is ignored. In this case, an anonymous
  * mapping is created, and accessing the mapped memory range will initially read zeroes. If `MAP_ANON` is
@@ -279,5 +279,12 @@ void procUnref(Process *proc);
  * On error, `MAP_FAILED` is returned, and if `err` is not NULL, the error number is stored there.
  */
 user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err);
+
+/**
+ * Perform pre-exec cleanup.
+ * 
+ * Unmaps all userspace segments, resets signal dispositions, closes close-on-exec files, etc.
+ */
+void procBeginExec();
 
 #endif

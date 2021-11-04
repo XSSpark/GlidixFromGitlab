@@ -42,6 +42,7 @@
 #include <glidix/util/panic.h>
 #include <glidix/hw/pagetab.h>
 #include <glidix/thread/process.h>
+#include <glidix/int/exec.h>
 
 /**
  * The terminator of the kernel init action list, see `kernel.ld` for an
@@ -101,6 +102,10 @@ static void kiaRun(const char *name)
 
 static void userspaceInit()
 {
+	static const char *initArgv[] = {"-init", NULL};
+	static const char *initEnv[] = {"USER=root", "HOME=/initrd", "PATH=/initrd", NULL};
+
+	kexec("/initrd/init", initArgv, initEnv);
 	panic("Failed to exec init!");
 };
 

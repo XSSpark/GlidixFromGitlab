@@ -31,6 +31,7 @@
 
 #include <glidix/util/common.h>
 #include <glidix/thread/sched.h>
+#include <glidix/hw/tss.h>
 
 /**
  * Size of the lowmem mapping when setting up APs.
@@ -75,6 +76,11 @@ struct CPU_
 	 * The current thread running on this CPU.
 	 */
 	Thread *currentThread;
+
+	/**
+	 * The TSS for this CPU.
+	 */
+	TSS tss;
 
 	/**
 	 * The 'idle thread' for this CPU.

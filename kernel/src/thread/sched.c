@@ -92,6 +92,11 @@ noreturn void _schedReturn(void *stack);
 noreturn void _schedIdle(void *stack);
 
 /**
+ * Update the TSS, for the specified kernel stack.
+ */
+void _schedUpdateTSS(void *kernelStack);
+
+/**
  * Destroy a terminated thread (call this only from the context of another
  * thread, without the schedLock!).
  */
@@ -163,8 +168,8 @@ void schedInitLocal()
 
 	memset(initThread, 0, sizeof(Thread));
 	initThread->wakeCounter = 1;
-
-	// TODO: stuff with the idle thread?
+	initThread->kernelStack = cpu->startupStack;
+	initThread->kernelStackSize = CPU_STARTUP_STACK_SIZE;
 
 	// make us the current thread
 	cpu->currentThread = initThread;
@@ -187,6 +192,12 @@ void schedSuspend()
 	Thread *currentThread = cpu->currentThread;
 
 	currentThread->wakeCounter--;
+	if (currentThread->wakeCounter < 0)
+	{
+		// this can happen in the idle thread as it's special
+		currentThread->wakeCounter = 0;
+	};
+	
 	if (currentThread->wakeCounter == 0)
 	{
 		// yield to the next task; note that when this returns, we will no longer
@@ -236,7 +247,10 @@ noreturn void _schedNext(void *stack)
 			
 			// set the FSBASE
 			wrmsr(MSR_FS_BASE, nextThread->fsbase);
-			
+
+			// update the TSS
+			_schedUpdateTSS((char*) nextThread->kernelStack + nextThread->kernelStackSize);
+
 			// release the schedLock, but keep interrupts disabled
 			spinlockRelease(&schedLock, 0);
 

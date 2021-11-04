@@ -110,32 +110,5 @@ initTR:
 	ltr ax
 	ret
 
-[global tssPrepare]
-tssPrepare:
-	mov rax,			qword _tss
-	mov rdi,			qword GDT64.TSS_baseLow
-	stosw
-	shr rax,			16
-	mov rdi,			qword GDT64.TSS_baseMiddle
-	stosb
-	mov rdi,			qword GDT64.TSS_baseMiddleHigh
-	shr ax,				8
-	stosb
-	mov rdi,			qword GDT64.TSS_baseHigh
-	shr rax,			16
-	stosd
-
-	mov rax,			qword _tss_limit
-	mov rdx,			qword _tss
-	sub rax,			rdx
-	mov rdi,			qword GDT64.TSS_limitLow
-	stosw
-	shr rax,			16
-	or  rax,			(1 << 5)
-	mov rdi,			qword GDT64.TSS_limitHigh
-	stosw
-
-	ret
-
 section .stack
 resb 0x200000

@@ -80,6 +80,9 @@ notify "Installing all packages in image sysroot..."
 (cd gxboot-build && DESTDIR=../build-sysroot make install) || exit 1
 (cd kernel-build && DESTDIR=../build-sysroot make install) || exit 1
 
+# TODO: temporary; build init properly later
+(nasm $srcdir/init/init.asm -felf64 -o init.o && x86_64-glidix-ld init.o -o build-sysroot/boot/initrd-sysroot/init) || exit 1
+
 notify "Creating the initrd..."
 mkdir -p build-sysroot/boot || exit 1
 (cd build-sysroot/boot/initrd-sysroot && tar -cf vmglidix.tar * && mv vmglidix.tar ../vmglidix.tar) || exit 1

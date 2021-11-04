@@ -42,6 +42,10 @@
 #define	PT_WRITE			(1UL << 1)
 #define	PT_USER				(1UL << 2)
 #define	PT_NOCACHE			(1UL << 4)
+#define	PT_PROT_READ			(1UL << 59)
+#define	PT_PROT_WRITE			(1UL << 60)
+#define	PT_PROT_EXEC			(1UL << 61)
+#define	PT_COW				(1UL << 62)
 #define	PT_NOEXEC			(1UL << 63)
 
 /**

@@ -116,6 +116,7 @@ extern void isr64();
 extern void isr65();
 extern void isr112();
 extern void isr113();
+extern void isr114();
 extern void irq_ditch();
 
 static void setGate(int index, void *isr)
@@ -221,6 +222,7 @@ void idtInit()
 	setGate(65, isr65);
 	setGate(0x70, isr112);
 	setGate(0x71, isr113);
+	setGate(0x72, isr114);
 	
 	// set up IST for some
 	setGateIST(I_NMI, 1);

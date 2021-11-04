@@ -27,83 +27,28 @@
 section .text
 bits 64
 
-extern _schedNext
-extern schedExitThread
-extern schedSuspend
-extern cpuGetTSS
-extern cpuGetGDT
+global _elfEnter
 
-global _schedYield
-_schedYield:
-	; push the registers which must be preserved
-	push rbx
-	push rbp
-	push r12
-	push r13
-	push r14
-	push r15
-	push rdi		; the IRQ state
+; RDI = the entry point (RIP)
+; RSI = the initial stack pointer (RSP)
+; RDX = pointer to FPU regs
+_elfEnter:
+	; load the initial FPU regs
+	fxrstor [rdx]
 
-	; tell the scheduler where this return stack is, and switch
-	; to the next task.
-	mov rdi, rsp
-	call _schedNext
-
-global _schedIdle
-_schedIdle:
-	; move to the idle stack passed as an argument
-	mov rsp, rdi
-
-	; enable interrupts, then keep halting; when an interrupt
-	; arrives, we will switch to a different context.
-	sti
-.loop:
-	hlt
-	call schedSuspend
-	jmp .loop
-
-global _schedReturn
-_schedReturn:
-	; move to the return stack
-	mov rsp, rdi
-
-	; pop the registers in the reverse order from _schedYield
-	pop rax
-	pop r15
-	pop r14
-	pop r13
-	pop r12
-	pop rbp
-	pop rbx
-
-	; restore the IRQ state and return
-	pushf
-	or [rsp], rax
-	popf
-	ret
-
-global _schedThreadEntry
-_schedThreadEntry:
-	; we are passed:
-	; R15 = entry func
-	; R14 = entry func argument
-	mov rdi, r14
-	call r15
-	call schedExitThread
-
-global _schedUpdateTSS
-_schedUpdateTSS:
-	push rbx
-	mov rbx, rdi
-
-	call cpuGetTSS
-	mov [rax+4], rbx			; put the kernel stack in the TSS
+	; set up stack for IRETQ
+	push 0x23			; userspace SS
+	push rsi			; userspace stack pointer
+	pushf				; userspace flags
+	push 0x1B			; userspace CS
+	push rdi			; userspace IP
 	
-	call cpuGetGDT
-	mov [rax+0x35], byte 11101001b		; reload the access field
-
-	mov rax, 0x33
-	ltr ax
-
-	pop rbx
-	ret
+	; disable interrupts and set up userspace data segments
+	cli
+	mov ax, 0x23
+	mov ds, ax
+	mov es, ax
+	mov fs, ax			; sets FSBASE=0 for initial thread
+	
+	; go to userspace
+	iretq

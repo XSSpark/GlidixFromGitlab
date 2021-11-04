@@ -426,7 +426,7 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 			break;
 		};
 
-		if (pte->value != 0)
+		if (pte->value & PT_PRESENT)
 		{
 			void *page = komPhysToVirt(pte->value & PT_PHYS_MASK);
 			ASSERT(page != NULL);
@@ -438,6 +438,11 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 
 			komUserPageUnref(page);
 		};
+
+		// specify the access bits
+		if (prot & PROT_READ) pte->value |= PT_PROT_READ;
+		if (prot & PROT_WRITE) pte->value |= PT_PROT_WRITE;
+		if (prot & PROT_EXEC) pte->value |= PT_PROT_EXEC;
 
 		// try to map into the page mapping tree
 		uint32_t pageIndex = (scan >> 12);
@@ -465,4 +470,42 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 	};
 
 	return addr;
+};
+
+static void _procUnmapWalkCallback(TreeMap *mappingTree, uint32_t pageIndex, void *value, void *context)
+{
+	Process *proc = (Process*) context;
+	ProcessMapping *mapping = (ProcessMapping*) value;
+
+	// remove from the mapping tree
+	treemapSet(mappingTree, pageIndex, NULL);
+
+	// unref it
+	procMappingUnref(mapping);
+
+	// if the PTE is mapped, unmap it, unref the page, invalidate
+	user_addr_t userAddr = ((user_addr_t) pageIndex) << 12;
+	PageNodeEntry *pte = _procGetPageTableEntry(userAddr);
+
+	if (pte->value & PT_PRESENT)
+	{
+		void *canon = komPhysToVirt(pte->value & PT_PHYS_MASK);
+		ASSERT(canon != NULL);
+
+		pte->value = 0;
+		invlpg((void*) userAddr);
+		cpuInvalidateCR3(proc->cr3);
+		
+		komUserPageUnref(canon);
+	};
+};
+
+void procBeginExec()
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	// unmap all userspace pages
+	mutexLock(&proc->mapLock);
+	treemapWalk(proc->mappingTree, _procUnmapWalkCallback, proc);
+	mutexUnlock(&proc->mapLock);
 };
