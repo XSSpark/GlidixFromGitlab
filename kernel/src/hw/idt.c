@@ -337,6 +337,11 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 			intHandlers[regs->intNo](intHandlerCtx[regs->intNo]);
 		};
 		__sync_synchronize();
+	}
+	else
+	{
+		// unsupported interrupt
+		panic("Receive unexpected interrupt: %d", regs->intNo);
 	};
 };
 
