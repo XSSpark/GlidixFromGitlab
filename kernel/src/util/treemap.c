@@ -111,3 +111,34 @@ errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr)
 	node->children[index] = ptr;
 	return 0;
 };
+
+static void treemapWalkRecur(
+	TreeMap *treemap,
+	TreeMapNode *node,
+	int depth,
+	uint32_t indexBuilder,
+	TreeMapWalkCallback callback,
+	void *context
+)
+{
+	if (depth == TREEMAP_DEPTH)
+	{
+		callback(treemap, indexBuilder, node, context);
+		return;
+	};
+
+	uint32_t subIndex;
+	for (subIndex=0; subIndex<TREEMAP_NUM_CHILDREN; subIndex++)
+	{
+		TreeMapNode *subnode = node->children[subIndex];
+		if (subnode != NULL)
+		{
+			treemapWalkRecur(treemap, subnode, depth+1, (indexBuilder << 8) | subIndex, callback, context);
+		};
+	};
+};
+
+void treemapWalk(TreeMap *treemap, TreeMapWalkCallback callback, void *context)
+{
+	treemapWalkRecur(treemap, &treemap->masterNode, 0, 0, callback, context);
+};

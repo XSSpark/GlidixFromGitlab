@@ -68,6 +68,11 @@ typedef struct
 } TreeMap;
 
 /**
+ * Callback for `treemapWalk()`.
+ */
+typedef void (*TreeMapWalkCallback)(TreeMap *treemap, uint32_t index, void *value, void *context);
+
+/**
  * Create a new treemap. Make sure to destroy it later using `treemapDestroy()`.
  * 
  * Returns `NULL` if memory could not be allocated.
@@ -95,5 +100,12 @@ void* treemapGet(TreeMap *map, uint32_t index);
  * `ENOMEM` is returned if memory allocation wasn't possible.
  */
 errno_t treemapSet(TreeMap *map, uint32_t index, void *ptr);
+
+/**
+ * Walk the tree. For every existing node, calls the `walker`, giving it the treemap
+ * itself, the index of the node, the value and the `context` pointer. This is efficient
+ * for walking sparse trees.
+ */
+void treemapWalk(TreeMap *treemap, TreeMapWalkCallback callback, void *context);
 
 #endif
