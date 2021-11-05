@@ -40,6 +40,7 @@
 #include <glidix/hw/fpu.h>
 #include <glidix/hw/idt.h>
 #include <glidix/hw/pagetab.h>
+#include <glidix/thread/process.h>
 
 IDTEntry idt[256];
 IDTPointer idtPtr;
@@ -257,42 +258,28 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 		uint64_t faultAddr;
 		ASM ("mov %%cr2, %%rax" : "=a" (faultAddr));
 
-		kprintf("Page fault accessing 0x%016lx: \n", faultAddr);
-		if ((regs->errCode & 1) == 0)
+		if (((regs->cs & 3) == 0) || (regs->errCode & PF_RESERVED))
 		{
-			kprintf("[non-present]");
+			// the fault was triggered by code running in kernel mode, or by
+			// reserved bits being invalid.
+			panic("Page fault in kernel code "
+				"(addr=0x%lx, rip=0x%lx, present=%d, write=%d, user=%d, reserved=%d, fetch=%d)",
+				faultAddr, regs->rip,
+				!!(regs->errCode & PF_PRESENT),
+				!!(regs->errCode & PF_WRITE),
+				!!(regs->errCode & PF_USER),
+				!!(regs->errCode & PF_RESERVED),
+				!!(regs->errCode & PF_FETCH)
+			);
 		};
 
-		if (regs->errCode & 2)
-		{
-			kprintf("[write]");
-		}
-		else
-		{
-			kprintf("[read]");
-		};
+		// valid page fault originating from userspace, we can enable interrupts and handle it
+		sti();
 
-		if (regs->errCode & 4)
+		if (procPageFault(faultAddr, regs->errCode, NULL) != 0)
 		{
-			kprintf("[user]");
-		}
-		else
-		{
-			kprintf("[kernel]");
+			panic("TODO: implement SIGSEGV/SIGBUS");
 		};
-
-		if (regs->errCode & 8)
-		{
-			kprintf("[reserved]");
-		};
-
-		if (regs->errCode & 16)
-		{
-			kprintf("[fetch]");
-		};
-
-		kprintf("\n");
-		while (1) ASM ("cli ; hlt");
 	}
 	else if (regs->intNo == I_APIC_TIMER)
 	{
@@ -342,7 +329,7 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	else
 	{
 		// unsupported interrupt
-		panic("Receive unexpected interrupt: %d", regs->intNo);
+		panic("Receive unexpected interrupt: %lu", regs->intNo);
 	};
 };
 

@@ -411,4 +411,11 @@ ssize_t vfsInodeRead(Inode *inode, void *buffer, size_t size, off_t pos);
  */
 ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos);
 
+/**
+ * Get (and upref) the user page corresponding to the specified offset within the inode. If `inode`
+ * is NULL, then allocates a new, zeroed out page, and returns it (with refcount 1). Returns NULL if
+ * an error occured.
+ */
+void* vfsInodeGetPage(Inode *inode, off_t offset);
+
 #endif

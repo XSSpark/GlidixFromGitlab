@@ -778,3 +778,20 @@ ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos)
 		return -EINVAL;
 	};
 };
+
+void* vfsInodeGetPage(Inode *inode, off_t offset)
+{
+	if (inode == NULL)
+	{
+		void *result = komAllocUserPage();
+		memset(result, 0, PAGE_SIZE);
+		return result;
+	};
+
+	mutexLock(&inode->pageCacheLock);
+	void *page = _vfsGetCachePage(inode, offset, 0, NULL);
+	if (page != NULL) komUserPageDup(page);
+	mutexUnlock(&inode->pageCacheLock);
+
+	return page;
+};

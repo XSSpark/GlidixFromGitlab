@@ -33,6 +33,7 @@
 #include <glidix/fs/vfs.h>
 #include <glidix/fs/path.h>
 #include <glidix/fs/file.h>
+#include <glidix/thread/signal.h>
 
 /**
  * The kernel init action for initialising the process table and starting `init`.
@@ -286,5 +287,12 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
  * Unmaps all userspace segments, resets signal dispositions, closes close-on-exec files, etc.
  */
 void procBeginExec();
+
+/**
+ * Handle a page fault for the specified address. `addr` is the address which faulted. Returns 0 if the page
+ * fault has been resolved and the program should be allowed to continue, or -1 on error. If `siginfo` is not
+ * NULL, and an error occurs, it is filled in with details of the signal to be dispatched.
+ */
+int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo);
 
 #endif

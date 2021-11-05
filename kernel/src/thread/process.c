@@ -507,3 +507,156 @@ void procBeginExec()
 	treemapWalk(proc->mappingTree, _procUnmapWalkCallback, proc);
 	mutexUnlock(&proc->mapLock);
 };
+
+/**
+ * Fill out `signfo` with error details, and return -1. Helper function for reporting page fault errors.
+ */
+static int _procPageFaultInvalid(Process *proc, user_addr_t addr, ksiginfo_t *siginfo, int signo, int code)
+{
+	if (siginfo != NULL)
+	{
+		memset(siginfo, 0, sizeof(ksiginfo_t));
+		siginfo->si_signo = signo;
+		siginfo->si_code = code;
+		siginfo->si_pid = proc->pid;
+		siginfo->si_uid = proc->ruid;
+		siginfo->si_addr = (void*) addr;
+	};
+
+	return -1;
+};
+
+static int _procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	// find check if the address is even within the range allowed for userspace
+	if (addr >= PROC_USER_ADDR_MAX)
+	{
+		return _procPageFaultInvalid(proc, addr, siginfo, SIGSEGV, SEGV_MAPERR);
+	};
+
+	// get the mapping at that location
+	uint32_t pageIndex = addr >> 12;
+	ProcessMapping *mapping = (ProcessMapping*) treemapGet(proc->mappingTree, pageIndex);
+	if (mapping == NULL)
+	{
+		// no mapping at this address!
+		return _procPageFaultInvalid(proc, addr, siginfo, SIGSEGV, SEGV_MAPERR);
+	};
+
+	// mapping exists, now get the page itself
+	PageNodeEntry *pte = _procGetPageTableEntry(addr);
+
+	// check if we have the required permissions
+	uint64_t requiredPerms = PT_PROT_READ;
+	if (faultFlags & PF_WRITE) requiredPerms |= PT_PROT_WRITE;
+	if (faultFlags & PF_FETCH) requiredPerms |= PT_PROT_EXEC;
+
+	uint64_t permsSet = pte->value & PT_PROT_MASK;
+	if ((permsSet & requiredPerms) != requiredPerms)
+	{
+		// not all permissions were granted
+		return _procPageFaultInvalid(proc, addr, siginfo, SIGSEGV, SEGV_ACCERR);
+	};
+
+	// if it's not yet called into memory, call it in now
+	if ((pte->value & PT_PRESENT) == 0)
+	{
+		off_t offset = (mapping->offset + addr - mapping->addr) & ~0xFFFUL;
+		void *page = vfsInodeGetPage(mapping->inode, offset);
+
+		if (page == NULL)
+		{
+			// we couldn't get the page!
+			return _procPageFaultInvalid(proc, addr, siginfo, SIGBUS, BUS_OBJERR);
+		};
+
+		uint64_t newPTE = pagetabGetPhys(page) | PT_PRESENT | PT_USER | permsSet;
+		if (mapping->inode == NULL)
+		{
+			// anonymous mapping, so allow writing to it even whether private or shared,
+			// if we have write permission; we don't need to copy-on-write as this is
+			// already a new, clear page
+			if (permsSet & PT_PROT_WRITE)
+			{
+				newPTE |= PT_WRITE;
+			};
+		}
+		else if (mapping->mflags & MAP_SHARED)
+		{
+			// shared mapping, so if we have write permission, allow code to write to
+			// this page directly
+			if (permsSet & PT_PROT_WRITE)
+			{
+				newPTE |= PT_WRITE;
+			};
+		}
+		else
+		{
+			// private mapping, so if we have write permission, mark it copy-on-write
+			if (permsSet & PT_PROT_WRITE)
+			{
+				newPTE |= PT_COW;
+			};
+		};
+
+		// if we don't have execute permission, mark it non-exec
+		if ((permsSet & PT_PROT_EXEC) == 0)
+		{
+			newPTE |= PT_NOEXEC;
+		};
+
+		// set it
+		pte->value = newPTE;
+	};
+
+	// if we are trying to write, and the page is copy-on-write, copy it
+	if ((faultFlags & PF_WRITE) && (pte->value & PT_COW))
+	{
+		void *oldPage = komPhysToVirt(pte->value & PT_PHYS_MASK);
+		ASSERT(oldPage != NULL);
+
+		void *newPage = komAllocUserPage();
+		if (newPage == NULL)
+		{
+			// out of memory!
+			return _procPageFaultInvalid(proc, addr, siginfo, SIGBUS, BUS_ADRERR);
+		};
+
+		// copy to the new page
+		memcpy(newPage, oldPage, PAGE_SIZE);
+
+		// create the new, writeable PTE, mark it no-exec if we don't hav exec permission
+		uint64_t newPTE = pagetabGetPhys(newPage) | PT_PRESENT | PT_USER | PT_WRITE | permsSet;
+		if ((permsSet & PT_PROT_EXEC) == 0)
+		{
+			newPTE |= PT_NOEXEC;
+		};
+
+		// set it
+		pte->value = newPTE;
+
+		// inform other CPUs about this before we release the page
+		cpuInvalidatePage(proc->cr3, (void*) addr);
+
+		// now release the old page
+		komUserPageUnref(oldPage);
+	};
+
+	// invalidate the page. we don't have to inform other CPUs; in the worst case, they'll simply page
+	// fault too, go through this code and change nothing and invalidate it
+	invlpg((void*) addr);
+	return 0;
+};
+
+int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	mutexLock(&proc->mapLock);
+	int result = _procPageFault(addr, faultFlags, siginfo);
+	mutexUnlock(&proc->mapLock);
+
+	return result;
+};

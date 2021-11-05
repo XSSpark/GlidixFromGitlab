@@ -70,6 +70,20 @@
 #define	SIGTHWAKE					36		/* wake a thread without dispatching a signal */
 #define	SIGTRACE					37		/* debugger notification */
 #define	SIGTHSUSP					38		/* suspend thread */
+
+/**
+ * si_code for SIGSEGV
+ */
+#define	SEGV_MAPERR					0x1001
+#define	SEGV_ACCERR					0x1002
+
+/**
+ * si_code for SIGBUS
+ */
+#define	BUS_ADRALN					0x4001
+#define	BUS_ADRERR					0x4002
+#define	BUS_OBJERR					0x4003
+
 #endif		/* SIGHUP */
 #define	SIG_NUM						39
 

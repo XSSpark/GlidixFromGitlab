@@ -54,9 +54,23 @@
 #define	PT_PHYS_MASK			0x0000FFFFFFFFF000UL
 
 /**
+ * Mask for the glidix permission bits.
+ */
+#define	PT_PROT_MASK			(PT_PROT_READ | PT_PROT_WRITE | PT_PROT_EXEC)
+
+/**
  * Size of a page.
  */
 #define	PAGE_SIZE			0x1000
+
+/**
+ * Page fault flags (as provided by the CPU in the `errCode`).
+ */
+#define	PF_PRESENT			(1 << 0)
+#define	PF_WRITE			(1 << 1)
+#define	PF_USER				(1 << 2)
+#define	PF_RESERVED			(1 << 3)
+#define	PF_FETCH			(1 << 4)
 
 /**
  * Format of a page table entry at each level (PML4, PDPT, etc).
