@@ -38,10 +38,10 @@ typedef union
 	struct
 	{
 		uint32_t ignore;
-		uint64_t rsp0;
-		uint64_t rsp1;			/* unused */
-		uint64_t rsp2;			/* unused */
-		uint64_t ist[8];		/* entry 0 reserved */
+		void* rsp0;
+		void* rsp1;			/* unused */
+		void* rsp2;			/* unused */
+		void* ist[8];		        /* entry 0 reserved */
 	} PACKED;
 } TSS;
 

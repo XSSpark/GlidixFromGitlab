@@ -115,6 +115,8 @@ void cpuInitSelf(int index)
 	segTSS->baseHigh = (tssAddr >> 32) & 0xFFFFFFFF;
 	segTSS->access = 0xE9;
 
+	me->tss.ist[1] = me->idleStack + CPU_IDLE_STACK_SIZE;
+
 	// reload GDT
 	ASM ("lgdt (%%rax)" : : "a" (&me->gdtPtr));
 
