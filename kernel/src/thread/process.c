@@ -433,8 +433,9 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 
 			pte->value = 0;
 
-			// since we unmapped, we must immediately inform other CPUs
-			cpuInvalidateCR3(proc->cr3);
+			// inform other CPUs that the page was unmapped
+			invlpg((void*) scan);
+			cpuInvalidatePage(proc->cr3, (void*) scan);
 
 			komUserPageUnref(page);
 		};
@@ -458,9 +459,6 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 
 	// get rid of our initial reference
 	procMappingUnref(mapping);
-
-	// tell other CPUs that this CR3 is invalidated
-	cpuInvalidateCR3(proc->cr3);
 
 	if (status != 0)
 	{
@@ -494,7 +492,7 @@ static void _procUnmapWalkCallback(TreeMap *mappingTree, uint32_t pageIndex, voi
 
 		pte->value = 0;
 		invlpg((void*) userAddr);
-		cpuInvalidateCR3(proc->cr3);
+		cpuInvalidatePage(proc->cr3, (void*) userAddr);
 		
 		komUserPageUnref(canon);
 	};

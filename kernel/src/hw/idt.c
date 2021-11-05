@@ -316,12 +316,11 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 			schedPreempt();
 		};
 	}
-	else if (regs->intNo == I_IPI_PAGETAB_INVL)
+	else if (regs->intNo == I_IPI_MESSAGE)
 	{
 		apic.eoi = 0;
 		__sync_synchronize();
-
-		ASM ("mov %%cr3, %%rax ; mov %%rax, %%cr3" : : : "%rax");
+		cpuProcessMessages();
 	}
 	else if (regs->intNo == IRQ0)
 	{

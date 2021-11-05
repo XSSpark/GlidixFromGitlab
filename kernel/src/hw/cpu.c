@@ -345,7 +345,7 @@ CPU* cpuGetIndex(int index)
 	return &cpuList[index];
 };
 
-void cpuInvalidateCR3(uint64_t cr3)
+void cpuInvalidatePage(uint64_t cr3, void *ptr)
 {
 	CPU *me = cpuGetCurrent();
 
@@ -355,8 +355,65 @@ void cpuInvalidateCR3(uint64_t cr3)
 		CPU *cpu = &cpuList[i];
 		if (cpu->currentCR3 == cr3 && cpu != me)
 		{
-			cpuSendInterrupt(cpu->apicID, I_IPI_PAGETAB_INVL | APIC_ICR_INITDEAS_NO);
-			while (apic.icr & APIC_ICR_PENDING) __sync_synchronize(); // TODO: does this actually wait for EOI?
+			cpuSendMessage(i, CPU_MSG_INVLPG, ptr);
 		};
 	};
+};
+
+int cpuSendMessage(int index, int msgType, void *param)
+{
+	CPU *cpu = &cpuList[index];
+
+	// set up the message structure
+	CPUMessage msg;
+	msg.msgType = msgType;
+	msg.param = param;
+	msg.ack = 0;
+	msg.waiter = schedGetCurrentThread();
+	__sync_synchronize();
+
+	IrqState irqState = spinlockAcquire(&cpu->msgLock);
+	msg.next = cpu->msg;
+	cpu->msg = &msg;
+	spinlockRelease(&cpu->msgLock, irqState);
+
+	cpuSendInterrupt(cpu->apicID, I_IPI_MESSAGE | APIC_ICR_INITDEAS_NO);
+	while (!msg.ack)
+	{
+		schedSuspend();
+		__sync_synchronize();
+	};
+
+	return msg.msgResp;
+};
+
+void cpuProcessMessages()
+{
+	CPU *cpu = cpuGetCurrent();
+
+	IrqState irqState = spinlockAcquire(&cpu->msgLock);
+	while (cpu->msg != NULL)
+	{
+		CPUMessage *msg = cpu->msg;
+		cpu->msg = msg->next;
+
+		if (msg->msgType == CPU_MSG_INVLPG)
+		{
+			invlpg(msg->param);
+		}
+		else if (msg->msgType == CPU_MSG_INVLPG_TABLE)
+		{
+			ASM ("mov %%cr3, %%rax ; mov %%rax, %%cr3" : : : "%rax");
+		}
+		else
+		{
+			panic("CPU with APIC ID %hhu received invalid message type (%d)", cpu->apicID, msg->msgType);
+		}
+
+		msg->ack = 1;
+		__sync_synchronize();
+		schedWake(msg->waiter);
+	};
+
+	spinlockRelease(&cpu->msgLock, irqState);
 };

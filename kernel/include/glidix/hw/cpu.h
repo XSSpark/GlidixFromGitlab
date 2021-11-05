@@ -62,6 +62,50 @@
 #define	CPU_MAX						128
 
 /**
+ * CPU message types.
+ */
+#define	CPU_MSG_INVLPG					1		/* invalidate page */
+#define	CPU_MSG_INVLPG_TABLE				2		/* invalidate the whole page table */
+
+/**
+ * Represents a message for the CPU.
+ */
+typedef struct CPUMessage_ CPUMessage;
+struct CPUMessage_
+{
+	/**
+	 * Next message.
+	 */
+	CPUMessage *next;
+	
+	/**
+	 * The message type (`CPU_MSG_*`).
+	 */
+	int msgType;
+
+	/**
+	 * Message response, if applicable.
+	 */
+	volatile int msgResp;
+
+	/**
+	 * Message parameter if applicable.
+	 */
+	void *param;
+
+	/**
+	 * Target CPU sets this to acknowledge that the message has been
+	 * processed and `msgResp` is set.
+	 */
+	volatile int ack;
+
+	/**
+	 * The thread waiting for this message to be processed.
+	 */
+	Thread *waiter;
+};
+
+/**
  * Represents a CPU.
  */
 typedef struct CPU_ CPU;
@@ -128,6 +172,16 @@ struct CPU_
 	 * the page table invalidation IPI to.
 	 */
 	volatile uint64_t currentCR3;
+
+	/**
+	 * Spinlock protecting the message queue.
+	 */
+	Spinlock msgLock;
+
+	/**
+	 * Pending message list.
+	 */
+	CPUMessage *msg;
 };
 
 /**
@@ -230,8 +284,20 @@ int cpuGetMyIndex();
 CPU* cpuGetIndex(int index);
 
 /**
- * Invalidate the specified CR3.
+ * Send a message to the specified CPU. Waits until the CPU acknowledges the message,
+ * and returns a response.
  */
-void cpuInvalidateCR3(uint64_t cr3);
+int cpuSendMessage(int index, int msgType, void *param);
+
+/**
+ * This is called when the `I_IPI_MESSAGE` interrupt is received. Process all messages in
+ * our message list.
+ */
+void cpuProcessMessages();
+
+/**
+ * Invalidate the TLB entry for the specified pointer in the specified CR3, among all CPUs.
+ */
+void cpuInvalidatePage(uint64_t cr3, void *ptr);
 
 #endif

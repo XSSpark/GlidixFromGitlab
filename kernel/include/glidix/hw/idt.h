@@ -97,7 +97,7 @@
 // 0x70 (112) + x interrupts are IPIs
 #define	I_IPI_HALT			0x70
 #define	I_IPI_WAKE			0x71
-#define	I_IPI_PAGETAB_INVL		0x72
+#define	I_IPI_MESSAGE			0x72
 
 typedef struct
 {
