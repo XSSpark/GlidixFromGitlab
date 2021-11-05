@@ -31,6 +31,6 @@
 
 #include <glidix/util/common.h>
 
-noreturn void panic(const char *fmt, ...);
+noreturn void panic(const char *fmt, ...) FORMAT(printf, 1, 2);
 
 #endif
