@@ -174,10 +174,14 @@ typedef	uint64_t sigset_t;
 
 struct sigaction
 {
-	void (*sa_handler)(int);
+	union
+	{
+		void (*sa_handler)(int);
+		void (*sa_sigaction)(int, siginfo_t*, void*);
+	};
+	
 	sigset_t sa_mask;
 	int sa_flags;
-	void (*sa_sigaction)(int, siginfo_t*, void*);
 };
 
 /* TODO: glidix currently does not set any of these values (leaves them all at zero); is there any use for them at all? */
