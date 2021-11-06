@@ -102,7 +102,7 @@ _syscall_entry:
 	fxrstor [rsp]
 
 	; restore userspace data segments
-	mov r8w, 0x10
+	mov r8, 0x10
 	mov ds, r8w
 	mov es, r8w
 
@@ -113,10 +113,12 @@ _syscall_entry:
 	; RCX = the userspace RIP that sysret will return to
 	; R11 = the userspace RFLAGs that sysret will return to
 	; RAX = the return value
+	; RDX = stores the userspace kernel stack, we can ignore (OK to "leak",
+	;       don't bother zeroing)
+	; R8 = contains the value 0x10 (the userspace data segment); again, OK
+	;       to "leak"
 	; all other volatile registers will be wiped with zeroes, to prevent
 	; any data leaks from kernel
-	xor rdx, rdx
-	xor r8, r8
 	xor r9, r9
 	xor r10, r10
 
