@@ -26,30 +26,10 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <glidix/int/syscall.h>
-#include <glidix/thread/sched.h>
-#include <glidix/util/panic.h>
 #include <glidix/int/exit.h>
+#include <glidix/util/panic.h>
 
-/**
- * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
- * An entry is allowed to be NULL, to specify an invalid system call. Please ensure that the
- * system calls are numbered correctly in the comments next to them.
- */
-void* _sysCallTable[] = {
-	sys_exit,							// 0
-};
-
-/**
- * Export the number of system calls, so that `syscall.asm` can access it.
- */
-uint64_t _sysCallCount = sizeof(_sysCallTable)/sizeof(void*);
-
-/**
- * This is called when an invalid syscall is detected. `context` is the syscall return context
- * (which enables us to dispatch a signal).
- */
-void _sysCallInvalid(SyscallContext *context)
+int sys_exit(int status)
 {
-	panic("TODO: can't handle invalid syscalls yet!");
+	panic("Called sys_exit() with status %d!", status);
 };
