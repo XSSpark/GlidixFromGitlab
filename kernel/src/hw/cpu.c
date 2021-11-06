@@ -45,6 +45,11 @@
 extern char _cpuTrampolineStart[];
 extern char _cpuTrampolineEnd[];
 
+/**
+ * The syscall entry point (defined in syscall.asm).
+ */
+extern char _syscall_entry[];
+
 static CPU cpuList[CPU_MAX];
 static int nextCPUIndex = 1;
 
@@ -122,6 +127,13 @@ void cpuInitSelf(int index)
 
 	// set the spurious interrupt vector
 	apic.sivr = 0x1FF;
+
+	// set up syscalls
+	wrmsr(MSR_STAR, ((uint64_t)8 << 32) | ((uint64_t)0x1b << 48));
+	wrmsr(MSR_LSTAR, (uint64_t)(_syscall_entry));
+	wrmsr(MSR_CSTAR, (uint64_t)(_syscall_entry));		        // we don't actually use compat mode
+	wrmsr(MSR_SFMASK, (1 << 9) | (1 << 10));			// disable interrupts on syscall and set DF=0
+	wrmsr(MSR_EFER, rdmsr(MSR_EFER) | EFER_SCE | EFER_NXE);
 
 	// initialize the scheduler
 	schedInitLocal();

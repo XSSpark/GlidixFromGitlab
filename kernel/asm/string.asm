@@ -37,7 +37,6 @@ global strcat
 global memZeroPage
 
 memcpy:
-	xchg	bx,	bx
 .copy16:
 	cmp	rdx,	16
 	jb	.copy8

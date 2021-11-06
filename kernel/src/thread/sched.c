@@ -248,8 +248,10 @@ noreturn void _schedNext(void *stack)
 			// set the FSBASE
 			wrmsr(MSR_FS_BASE, nextThread->fsbase);
 
-			// update the TSS
-			_schedUpdateTSS((char*) nextThread->kernelStack + nextThread->kernelStackSize);
+			// update the TSS and the syscall stack
+			void *kernelRSP = (char*) nextThread->kernelStack + nextThread->kernelStackSize;
+			_schedUpdateTSS(kernelRSP);
+			cpu->syscallStackPointer = kernelRSP;
 
 			// release the schedLock, but keep interrupts disabled
 			spinlockRelease(&schedLock, 0);
@@ -354,6 +356,7 @@ Thread* schedCreateKernelThread(KernelThreadFunc func, void *param, void *resv)
 	frame->func = func;
 	frame->param = param;
 	frame->entry = _schedThreadEntry;
+	fpuSave(&frame->fpuRegs);
 
 	// make that the retstack
 	thread->retstack = frame;

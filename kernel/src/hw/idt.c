@@ -281,6 +281,10 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 			panic("TODO: implement SIGSEGV/SIGBUS");
 		};
 	}
+	else if (regs->intNo == I_DOUBLE)
+	{
+		panic("The CPU double-faulted!");
+	}
 	else if (regs->intNo == I_APIC_TIMER)
 	{
 		apic.eoi = 0;

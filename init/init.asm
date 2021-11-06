@@ -5,6 +5,8 @@ section .text
 
 global _start
 _start:
+	xchg bx, bx
+	syscall
 	mov eax, 0xBEEFBEEF
 	xchg bx, bx
 	jmp _start

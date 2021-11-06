@@ -32,6 +32,7 @@
 #include <glidix/util/common.h>
 #include <glidix/util/treemap.h>
 #include <glidix/thread/signal.h>
+#include <glidix/hw/fpu.h>
 
 /**
  * Time quantum in nanoseconds.
@@ -61,10 +62,35 @@ typedef struct Process_ Process;			// process.h
 typedef struct Runqueue_ Runqueue;
 
 /**
- * Represents a running thread.
+ * Syscall return context. This is the format of the stack frame pushed by `syscall.asm`
+ * (see there).
+ */
+typedef struct
+{
+	uint64_t ignore;
+	uint64_t rbx;
+	uint64_t rbp;
+	uint64_t r12;
+	uint64_t r13;
+	uint64_t r14;
+	uint64_t r15;
+	uint64_t rsp;
+	uint64_t rflags;
+	uint64_t rip;
+	FPURegs fpuRegs;
+} SyscallContext;
+
+/**
+ * Represents a running thread. Note that some fields required specific offsets as they
+ * are access from assembly; these are marked with a comment speicfiyng the offset.
  */
 struct Thread_
 {
+	/**
+	 * The syscall return context, needed to dispatch signals from a syscall.
+	 */
+	SyscallContext *syscallContext;						// 0x00
+
 	/**
 	 * Next thread in the runqueue.
 	 */
@@ -151,7 +177,9 @@ typedef struct
 	IrqState irqState;			// IRQ state
 	KernelThreadFunc func;			// r15
 	void *param;				// r14
-	void *ignored[4];			// r13, r12, rbp, rbx
+	void *ignored[5];			// r13, r12, rbp, rbx, dummy
+	FPURegs fpuRegs;			// FPU regs
+	uint64_t dummy;				// the other dummy
 	void *entry;				// rip
 } ThreadInitialStackFrame;
 

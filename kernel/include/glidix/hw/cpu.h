@@ -106,7 +106,8 @@ struct CPUMessage_
 };
 
 /**
- * Represents a CPU.
+ * Represents a CPU. Some of the fields here must have specific offsets, as they are
+ * accessed from assembly. These are marked with a comment specifying the offset.
  */
 typedef struct CPU_ CPU;
 struct CPU_
@@ -114,12 +115,25 @@ struct CPU_
 	/**
 	 * Points back to itself.
 	 */
-	CPU *self;
+	CPU *self;							// 0x00
 
 	/**
 	 * The current thread running on this CPU.
 	 */
-	Thread *currentThread;
+	Thread *currentThread;						// 0x08
+
+	/**
+	 * Kernel stack pointer when entering a syscall.
+	 */
+	void* syscallStackPointer;					// 0x10
+
+	/**
+	 * "Syscall save slot", this is used in `syscall.asm` to save a temporary
+	 * value.
+	 */
+	uint64_t syscallSaveSlot;					// 0x18
+
+	// --- END OF ASSEMBLY-USEABLE AREA ---
 
 	/**
 	 * The TSS for this CPU.

@@ -35,6 +35,11 @@ extern cpuGetGDT
 
 global _schedYield
 _schedYield:
+	; preserve FPU regs (this includes control regs and whatnot)
+	sub rsp, 512+8
+	fxsave [rsp]
+	push rax
+
 	; push the registers which must be preserved
 	push rbx
 	push rbp
@@ -75,6 +80,10 @@ _schedReturn:
 	pop r12
 	pop rbp
 	pop rbx
+
+	pop rcx
+	fxrstor [rsp]
+	add rsp, 512+8
 
 	; restore the IRQ state and return
 	pushf
