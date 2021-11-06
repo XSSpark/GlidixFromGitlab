@@ -77,7 +77,7 @@ _syscall_entry:
 	mov rbx, _sysCallTable
 	shl rax, 3
 	add rax, rbx
-	mov [rax], rax
+	mov rax, [rax]
 
 	; ensure that the pointer isn't NULL
 	test rax, rax
