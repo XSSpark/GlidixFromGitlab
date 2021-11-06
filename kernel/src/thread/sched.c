@@ -517,3 +517,27 @@ void schedSetFSBase(uint64_t fsbase)
 	schedGetCurrentThread()->fsbase = fsbase;
 	wrmsr(MSR_FS_BASE, fsbase);
 };
+
+int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
+{
+	if (signum < 1 || signum >= SIG_NUM || signum == SIGKILL || signum == SIGTERM || signum == SIGTHKILL)
+	{
+		return -EINVAL;
+	};
+
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	Process *proc = schedGetCurrentThread()->proc;
+	if (oldact != NULL)
+	{
+		memcpy(oldact, &proc->sigActions[signum], sizeof(SigAction));
+	};
+
+	if (act != NULL)
+	{
+		memcpy(&proc->sigActions[signum], act, sizeof(SigAction));
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	return 0;
+};

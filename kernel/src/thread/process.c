@@ -660,3 +660,63 @@ int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo)
 
 	return result;
 };
+
+int procToKernelCopy(void *ptr, user_addr_t addr, size_t size)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+	char *put = (char*) ptr;
+
+	int status = 0;
+
+	mutexLock(&proc->mapLock);
+	while (size != 0)
+	{
+		if (_procPageFault(addr, 0, NULL) != 0)
+		{
+			status = -EFAULT;
+			break;
+		};
+
+		size_t pageLeft = 0x1000 - (addr & 0xFFF);
+		size_t sizeToCopy = size > pageLeft ? pageLeft : size;
+
+		memcpy(put, (void*)addr, sizeToCopy);
+
+		addr += sizeToCopy;
+		put += sizeToCopy;
+		size -= sizeToCopy;
+	};
+	mutexUnlock(&proc->mapLock);
+
+	return status;
+};
+
+int procToUserCopy(user_addr_t addr, const void *ptr, size_t size)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+	const char *scan = (const char*) ptr;
+
+	int status = 0;
+
+	mutexLock(&proc->mapLock);
+	while (size != 0)
+	{
+		if (_procPageFault(addr, PF_WRITE, NULL) != 0)
+		{
+			status = -EFAULT;
+			break;
+		};
+
+		size_t pageLeft = 0x1000 - (addr & 0xFFF);
+		size_t sizeToCopy = size > pageLeft ? pageLeft : size;
+
+		memcpy((void*)addr, scan, sizeToCopy);
+
+		addr += sizeToCopy;
+		scan += sizeToCopy;
+		size -= sizeToCopy;
+	};
+	mutexUnlock(&proc->mapLock);
+
+	return status;
+};

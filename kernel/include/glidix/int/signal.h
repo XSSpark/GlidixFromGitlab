@@ -84,6 +84,17 @@
 #define	BUS_ADRERR					0x4002
 #define	BUS_OBJERR					0x4003
 
+/**
+ * sigaction sa_flags
+ */
+#define	SA_NOCLDSTOP					(1 << 0)
+#define	SA_NOCLDWAIT					(1 << 1)
+#define	SA_NODEFER					(1 << 2)
+#define	SA_ONSTACK					(1 << 3)
+#define	SA_RESETHAND					(1 << 4)
+#define	SA_RESTART					(1 << 5)
+#define	SA_SIGINFO					(1 << 6)
+
 #endif		/* SIGHUP */
 #define	SIG_NUM						39
 
@@ -157,8 +168,23 @@ typedef struct
 } ksiginfo_t;
 
 /**
+ * Must match 'struct sigaction' from libc.
+ */
+typedef struct
+{
+	uint64_t sa_sigaction_handler;
+	uint64_t sa_mask;
+	int sa_flags;
+} SigAction;
+
+/**
  * Set of signals.
  */
 typedef uint64_t ksigset_t;
+
+/**
+ * System call to change the disposition of a signal.
+ */
+int sys_sigaction(int signum, uint64_t act, uint64_t oldact);
 
 #endif		/* __glidix_thread_signal_h */

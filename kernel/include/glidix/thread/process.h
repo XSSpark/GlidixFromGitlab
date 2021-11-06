@@ -33,7 +33,7 @@
 #include <glidix/fs/vfs.h>
 #include <glidix/fs/path.h>
 #include <glidix/fs/file.h>
-#include <glidix/thread/signal.h>
+#include <glidix/int/signal.h>
 
 /**
  * The kernel init action for initialising the process table and starting `init`.
@@ -185,13 +185,24 @@ struct Process_
 
 	/**
 	 * Set of pending signals for this process (will be dispatched to an arbitrary thread).
+	 * 
+	 * This is protected by the scheduler lock.
 	 */
 	ksigset_t sigPending;
 
 	/**
 	 * For each pending signal, the signal information.
+	 * 
+	 * This is protected by the scheduler lock.
 	 */
 	ksiginfo_t sigInfo[SIG_NUM];
+
+	/**
+	 * Signal dispositions for the current process.
+	 * 
+	 * This is protected by the scheduler lock.
+	 */
+	SigAction sigActions[SIG_NUM];
 
 	/**
 	 * UIDs and GIDs.
@@ -294,5 +305,17 @@ void procBeginExec();
  * NULL, and an error occurs, it is filled in with details of the signal to be dispatched.
  */
 int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo);
+
+/**
+ * Copy into kernel memory, from the userspace address `addr`. Returns 0 on success, or a negated error number
+ * (probably `-EFAULT`) if the copy was not possible.
+ */
+int procToKernelCopy(void *ptr, user_addr_t addr, size_t size);
+
+/**
+ * Copy into user memory, from the kernel pointer. Returns 0 on success, or a negated error number (probably
+ * `-EFAULT`) if the copy was not possible.
+ */
+int procToUserCopy(user_addr_t addr, const void *ptr, size_t size);
 
 #endif
