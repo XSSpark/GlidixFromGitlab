@@ -36,11 +36,40 @@ global strcmp
 global strcat
 
 memcpy:
-	push	rbp
-	mov	rbp,	rsp
+	xchg	bx,	bx
+.copy16:
+	cmp	rdx,	16
+	jb	.copy8
+	movups	xmm0,	[rsi]
+	movups	[rdi],	xmm0
+	add	rdi,	16
+	add	rsi,	16
+	sub	rdx,	16
+	jmp	.copy16
+.copy8:
+	cmp	rdx,	8
+	jb	.copy4
+	mov	rax,	[rsi]
+	mov	[rdi],	rax
+	add	rdi,	8
+	add	rsi,	8
+	sub	rdx,	8
+	jmp	.copy8
+.copy4:
+	cmp	rdx,	4
+	jb	.copy2
+	mov	eax,	[rsi]
+	mov	[rdi],	eax
+	add	rdi,	4
+	add	rsi,	4
+	sub	rdx,	4
+	jmp	.copy4
+.copy2:
 	mov	rcx,	rdx
+	test	rcx,	rcx
+	jz	.return
 	rep	movsb
-	pop	rbp
+.return:
 	ret
 
 memset:
