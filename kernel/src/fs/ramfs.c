@@ -125,7 +125,7 @@ static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
 static int ramfsLoadPage(Inode *inode, off_t pos, void *buffer)
 {
 	// there's no data "already on disk" ever, so we just zero out
-	memset(buffer, 0, PAGE_SIZE);
+	memZeroPage(buffer);
 	return 0;
 };
 

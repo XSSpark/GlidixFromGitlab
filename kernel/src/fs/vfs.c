@@ -784,7 +784,9 @@ void* vfsInodeGetPage(Inode *inode, off_t offset)
 	if (inode == NULL)
 	{
 		void *result = komAllocUserPage();
-		memset(result, 0, PAGE_SIZE);
+		if (result == NULL) return NULL;
+		
+		memZeroPage(result);
 		return result;
 	};
 

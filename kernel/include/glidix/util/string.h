@@ -45,30 +45,24 @@ int    memcmp(const void *a, const void *b, size_t size);
 int    strcmp(const char *a, const char *b);
 void   strcat(char *dst, const char *a);
 char*  strdup(const char *str);
-int    strncmp(const char *s1, const char *s2, size_t n);		/* init.c */
-int    isprint(int c);							/* init.c */
-char*  strncpy(char *s1, const char *s2, size_t n);			/* init.c */
-int    isdigit (int c);							/* init.c */
-int    isspace(int c);							/* init.c */
-int    isxdigit(int c);							/* init.c */
-int    toupper(int c);							/* init.c */
-int    tolower(int c);                                                  /* init.c */
-char*  strncat(char *dst, const char *src, size_t n);			/* init.c */
-int    isalpha(int c);							/* init.c */
-int    isupper(int c);							/* init.c */
-int    islower(int c);							/* init.c */
-unsigned long strtoul(const char *nptr, char **endptr, int base);	/* init.c */
-char *strstr(const char *in, const char *str);				/* init.c */
+int    strncmp(const char *s1, const char *s2, size_t n);
+int    isprint(int c);
+char*  strncpy(char *s1, const char *s2, size_t n);
+int    isdigit (int c);
+int    isspace(int c);
+int    isxdigit(int c);
+int    toupper(int c);
+int    tolower(int c);
+char*  strncat(char *dst, const char *src, size_t n);
+int    isalpha(int c);
+int    isupper(int c);
+int    islower(int c);
+unsigned long strtoul(const char *nptr, char **endptr, int base);
+char *strstr(const char *in, const char *str);
 
 /**
- * Performs string formatting. Similar to userspace sprintf(), but accepts a slightly different
- * format (just like the kernel kprintf()). Supported format specifiers:
- * %c (char) - outputs a literal character.
- * %s (const char *) - outputs a string
- * %d (int) - outputs a decimal integer.
- * Returns 0 on success, -1 on buffer overflow or format error.
- * Defined in strformat.c.
+ * Zero out a page.
  */
-int strformat(char *buffer, size_t bufsize, const char *format, ...);
+void memZeroPage(void *page);
 
 #endif

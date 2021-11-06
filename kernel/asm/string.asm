@@ -34,6 +34,7 @@ global strlen
 global memcmp
 global strcmp
 global strcat
+global memZeroPage
 
 memcpy:
 	xchg	bx,	bx
@@ -152,3 +153,12 @@ strcat:
 	jz	strcpy
 	inc	rdi
 	jmp	.next
+
+memZeroPage:
+	xorps	xmm0,	xmm0
+	mov	rcx,	256
+.loop:
+	movaps	[rdi],	xmm0
+	add	rdi,	16
+	loop	.loop
+	ret

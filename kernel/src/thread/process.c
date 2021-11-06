@@ -195,7 +195,7 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 		return -ENOMEM;
 	};
 
-	memset(newPML4, 0, PAGE_SIZE);
+	memZeroPage(newPML4);
 
 	newPML4[509] = myPML4[509];
 	newPML4[510] = myPML4[510];
@@ -299,7 +299,7 @@ static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
 				return NULL;
 			};
 
-			memset(nextLevel, 0, PAGE_SIZE);
+			memZeroPage(nextLevel);
 
 			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
 			// so that we can set these per-page without worrying about the higher levels
