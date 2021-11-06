@@ -502,6 +502,9 @@ void procBeginExec()
 {
 	Process *proc = schedGetCurrentThread()->proc;
 
+	// reset signal dispositions
+	schedResetSigActions();
+	
 	// unmap all userspace pages
 	mutexLock(&proc->mapLock);
 	treemapWalk(proc->mappingTree, _procUnmapWalkCallback, proc);

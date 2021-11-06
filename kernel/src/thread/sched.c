@@ -541,3 +541,11 @@ int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
 	spinlockRelease(&schedLock, irqState);
 	return 0;
 };
+
+void schedResetSigActions()
+{
+	IrqState irqState = spinlockAcquire(&schedLock);
+	Process *proc = schedGetCurrentThread()->proc;
+	memset(proc->sigActions, 0, sizeof(proc->sigActions));
+	spinlockRelease(&schedLock, irqState);
+};

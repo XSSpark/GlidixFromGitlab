@@ -278,4 +278,9 @@ void schedSetFSBase(uint64_t fsbase);
  */
 int schedSigAction(int signum, const SigAction *act, SigAction *oldact);
 
+/**
+ * Reset signal dispositions.
+ */
+void schedResetSigActions();
+
 #endif

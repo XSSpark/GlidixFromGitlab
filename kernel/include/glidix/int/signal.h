@@ -95,6 +95,15 @@
 #define	SA_RESTART					(1 << 5)
 #define	SA_SIGINFO					(1 << 6)
 
+/**
+ * Signal disposition special values.
+ */
+#define	SIG_DFL						0
+#define	SIG_ERR						1
+#define	SIG_HOLD					2
+#define	SIG_IGN						3
+#define	SIG_CORE					4
+
 #endif		/* SIGHUP */
 #define	SIG_NUM						39
 
