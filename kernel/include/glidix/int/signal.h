@@ -30,6 +30,7 @@
 #define	__glidix_thread_signal_h
 
 #include <glidix/util/common.h>
+#include <glidix/hw/fpu.h>
 
 #ifndef SIGHUP
 #define	SIGHUP						1
@@ -83,6 +84,35 @@
 #define	BUS_ADRALN					0x4001
 #define	BUS_ADRERR					0x4002
 #define	BUS_OBJERR					0x4003
+
+/**
+ * sigaction sa_flags
+ */
+#define	SA_NOCLDSTOP					(1 << 0)
+#define	SA_NOCLDWAIT					(1 << 1)
+#define	SA_NODEFER					(1 << 2)
+#define	SA_ONSTACK					(1 << 3)
+#define	SA_RESETHAND					(1 << 4)
+#define	SA_RESTART					(1 << 5)
+#define	SA_SIGINFO					(1 << 6)
+
+/**
+ * Signal disposition special values.
+ */
+#define	SIG_DFL						0
+#define	SIG_ERR						1
+#define	SIG_HOLD					2
+#define	SIG_IGN						3
+#define	SIG_CORE					4
+#define	SIG_TERM					5
+#define	SIG_STOP					6
+
+/**
+ * `how` values for `sys_procmask()`.
+ */
+#define	SIG_BLOCK					0
+#define	SIG_UNBLOCK					1
+#define	SIG_SETMASK					2
 
 #endif		/* SIGHUP */
 #define	SIG_NUM						39
@@ -161,15 +191,76 @@ typedef struct
  */
 typedef struct
 {
-	void (*sa_handler)(int);
+	uint64_t sa_sigaction_handler;
 	uint64_t sa_mask;
 	int sa_flags;
-	void (*sa_sigaction)(int, siginfo_t*, void*);
 } SigAction;
 
 /**
  * Set of signals.
  */
 typedef uint64_t ksigset_t;
+
+/**
+ * Describes a signal stack.
+ */
+typedef struct
+{
+	void*		ss_sp;
+	size_t		ss_size;
+	int		ss_flags;
+} kstack_t;
+
+/**
+ * GPRs in a signal stack frame.
+ */
+typedef struct
+{
+	uint64_t rsp;			// first so it can be discarded
+	uint64_t rax;
+	uint64_t rbx;
+	uint64_t rcx;
+	uint64_t rdx;
+	uint64_t rsi;
+	uint64_t rdi;
+	uint64_t rbp;
+	uint64_t r8;
+	uint64_t r9;
+	uint64_t r10;
+	uint64_t r11;
+	uint64_t r12;
+	uint64_t r13;
+	uint64_t r14;
+	uint64_t r15;
+	uint64_t rip;			// last so it can be restored with `ret`
+} kmcontext_gpr_t;
+
+/**
+ * Signal return context; this must match `ucontext_t` in userspace. Note that this structure
+ * must be preserved for ABI compatiblity, and is also accessed from assembly. Offsets of each
+ * field are specified in a comment.
+ */
+typedef struct
+{
+	uint64_t uc_link;		// 0x00
+	ksigset_t uc_sigmask;		// 0x08
+	kstack_t uc_stack;		// 0x10
+	uint64_t uc_padding;		// 0x28 ; pads the mcontext to 16 bytes
+
+	// --- mcontext_t begins here ---
+	FPURegs fpuRegs;		// 0x30
+	uint64_t gprptr;		// 0x230 ; pointer to GPRs
+} kucontext_t;
+
+/**
+ * System call to change the disposition of a signal.
+ */
+int sys_sigaction(int signum, uint64_t act, uint64_t oldact);
+
+/**
+ * Set the calling's thread's sigmal mask and return the old mask. If `how` has an invalid
+ * value, the old mask is returned, and the mask is not updated.
+ */
+ksigset_t sys_sigmask(int how, ksigset_t mask);
 
 #endif		/* __glidix_thread_signal_h */

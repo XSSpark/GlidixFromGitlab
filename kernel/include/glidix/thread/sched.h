@@ -31,7 +31,7 @@
 
 #include <glidix/util/common.h>
 #include <glidix/util/treemap.h>
-#include <glidix/thread/signal.h>
+#include <glidix/int/signal.h>
 #include <glidix/hw/fpu.h>
 
 /**
@@ -271,5 +271,27 @@ gid_t schedGetEffectiveGID();
  * Set FSBASE for the calling thread.
  */
 void schedSetFSBase(uint64_t fsbase);
+
+/**
+ * If `act` is not NULL, set the signal dispostion of `signum` to it. If `oldact` is not NULL, the old disposition
+ * is stored there. Returns 0 on success, or a negated error number on error.
+ */
+int schedSigAction(int signum, const SigAction *act, SigAction *oldact);
+
+/**
+ * Reset signal dispositions.
+ */
+void schedResetSigActions();
+
+/**
+ * Get the signal mask of the calling thread.
+ */
+ksigset_t schedGetSigMask();
+
+/**
+ * Dispatch a signal to the calling thread, with the specified userspace regs. This will exit from kernel space
+ * if necessary and call the signal handler. It will return if the signal is ignored.
+ */
+void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *siginfo);
 
 #endif

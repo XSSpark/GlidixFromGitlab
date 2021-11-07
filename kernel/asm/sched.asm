@@ -116,3 +116,45 @@ _schedUpdateTSS:
 
 	pop rbx
 	ret
+
+global _schedEnterSignalHandler
+_schedEnterSignalHandler:
+	; RDI = signal number (will be passed to handler)
+	; RSI = siginfo_t userspace pointer (will be passed to handler)
+	; RDX = context pointer (will be passed to handler, also used to find stack)
+	; RCX = the handler address (in userspace)
+
+	; figure out the userspace stack pointer and store in RAX (this is just 8
+	; below the context pointer)
+	lea rax, [rdx-8]
+
+	; set up a stack for IRETQ
+	push 0x23			; userspace SS
+	push rax			; userspace stack pointer
+	pushf				; userspace flags
+	or qword [rsp], (1 << 9)	; ensure interrupts will be enabled
+	push 0x1B			; userspace CS
+	push rcx			; userspace IP
+
+	; set up userspace data segments
+	cli
+	mov ax, 0x23
+	mov ds, ax
+	mov es, ax
+
+	; zero out the GPRs except for the arguments to the handler
+	xor rax, rax
+	xor rbx, rbx
+	xor rcx, rcx
+	xor rbp, rbp
+	xor r8, r8
+	xor r9, r9
+	xor r10, r10
+	xor r11, r11
+	xor r12, r12
+	xor r13, r13
+	xor r14, r14
+	xor r15, r15
+
+	; go to the handler
+	iretq

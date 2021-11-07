@@ -157,6 +157,17 @@ typedef struct
 } ksiginfo_t;
 
 /**
+ * Must match 'struct sigaction' from libc.
+ */
+typedef struct
+{
+	void (*sa_handler)(int);
+	uint64_t sa_mask;
+	int sa_flags;
+	void (*sa_sigaction)(int, siginfo_t*, void*);
+} SigAction;
+
+/**
  * Set of signals.
  */
 typedef uint64_t ksigset_t;

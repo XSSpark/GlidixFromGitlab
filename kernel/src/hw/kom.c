@@ -67,10 +67,31 @@ static KOM_Region regions[KOM_MAX_REGIONS];
  */
 static int numRegions;
 
+/**
+ * Index of the current physical memory region to allocate from.
+ */
+static int allocMmapIndex;
+
 static void _komReleaseIntoPool(KOM_Pool *pool, KOM_Header *obj, int bucketIndex);
 
 static uint64_t placementAlloc(uint64_t *placeptr)
 {
+	uint64_t end = bootInfo->mmap[allocMmapIndex].baseAddr + bootInfo->mmap[allocMmapIndex].len;
+	end &= ~0xFFF;
+	if (*placeptr == end)
+	{
+		int mmapIndex;
+		for (mmapIndex=0; mmapIndex<bootInfo->mmapCount; mmapIndex++)
+		{
+			MemoryMapEntry *ent = &bootInfo->mmap[mmapIndex];
+			if (ent->baseAddr > *placeptr && ent->type == 1 && (ent->baseAddr & 0xFFF) == 0 && ent->len >= PAGE_SIZE)
+			{
+				allocMmapIndex = mmapIndex;
+				*placeptr = ent->baseAddr;
+			};
+		};
+	};
+
 	uint64_t result = *placeptr;
 	(*placeptr) += PAGE_SIZE;
 	return result;
@@ -78,21 +99,34 @@ static uint64_t placementAlloc(uint64_t *placeptr)
 
 void komInit()
 {
-	uint64_t mmap = (uint64_t) bootInfo->mmap;
-	uint64_t mmapEnd = mmap + bootInfo->mmapSize;
 	kprintf("Virtual mapping area begins at: 0x%p\n", __virtMapArea);
 
 	uint64_t place = bootInfo->end;
 	place = (place + 0xFFF) & ~0xFFF;
 	kprintf("Physical placement of page tables will begin at: 0x%lx\n", place);
 
+	for (allocMmapIndex=0; allocMmapIndex<bootInfo->mmapCount; allocMmapIndex++)
+	{
+		MemoryMapEntry *ent = &bootInfo->mmap[allocMmapIndex];		
+		if (ent->baseAddr <= place && ent->baseAddr+ent->len > place && ent->type == 1)
+		{
+			break;
+		};
+	};
+
+	if (allocMmapIndex == bootInfo->mmapCount)
+	{
+		panic("Failed to find the physical memory region containing the current placement address");
+	};
+
 	kprintf("Creating page tables for useable memory...\n");
 	kprintf("%-21s%s\n", "Phys. addr", "Size (bytes)");
 
 	char *vaddr = __virtMapArea;
-	while (mmap < mmapEnd)
+	int mmapIndex;
+	for (mmapIndex=0; mmapIndex<bootInfo->mmapCount; mmapIndex++)
 	{
-		MemoryMapEntry *ent = (MemoryMapEntry*) mmap;
+		MemoryMapEntry *ent = &bootInfo->mmap[mmapIndex];
 
 		if (ent->type == 1 && (ent->baseAddr & 0xFFF) == 0)
 		{
@@ -124,8 +158,6 @@ void komInit()
 				};
 			};
 		};
-
-		mmap += ent->size + 4;
 	};
 
 	kprintf("\nFinal start of useable physical memory: 0x%lx\n", place);
@@ -136,11 +168,10 @@ void komInit()
 	// to map the pages
 	vaddr = __virtMapArea;
 	uint64_t *pte = ((uint64_t*)(((((uint64_t)vaddr) >> 9) & (~(0x7UL | 0xFFFF000000000000UL))) | 0xFFFFFF8000000000));
-	mmap = (uint64_t) bootInfo->mmap;
 
-	while (mmap < mmapEnd)
+	for (mmapIndex=0; mmapIndex<bootInfo->mmapCount; mmapIndex++)
 	{
-		MemoryMapEntry *ent = (MemoryMapEntry*) mmap;
+		MemoryMapEntry *ent = &bootInfo->mmap[mmapIndex];
 
 		if (ent->type == 1 && (ent->baseAddr & 0xFFF) == 0)
 		{
@@ -181,8 +212,6 @@ void komInit()
 
 			badSection:;
 		};
-
-		mmap += ent->size + 4;
 	};
 
 	// now set up the heap

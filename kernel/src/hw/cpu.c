@@ -95,12 +95,6 @@ void cpuInitSelf(int index)
 	me->apicID = apic.id >> 24;		// we need this for the initial CPU
 	me->kernelCR3 = pagetabGetCR3();
 
-	// set the GS segment to point to the CPU struct as expected
-	wrmsr(MSR_GS_BASE, (uint64_t) me);
-
-	// enable the local APIC at the default base address
-	wrmsr(MSR_APIC_BASE, APIC_PHYS_BASE | APIC_BASE_ENABLE);
-
 	// set up the TSS
 	if (index == 0)
 	{
@@ -125,9 +119,15 @@ void cpuInitSelf(int index)
 	// reload GDT
 	ASM ("lgdt (%%rax)" : : "a" (&me->gdtPtr));
 
+	// set the GS segment to point to the CPU struct as expected
+	wrmsr(MSR_GS_BASE, (uint64_t) me);
+
+	// enable the local APIC at the default base address
+	wrmsr(MSR_APIC_BASE, APIC_PHYS_BASE | APIC_BASE_ENABLE);
+
 	// set the spurious interrupt vector
 	apic.sivr = 0x1FF;
-
+	
 	// set up syscalls
 	wrmsr(MSR_STAR, ((uint64_t)8 << 32) | ((uint64_t)0x1b << 48));
 	wrmsr(MSR_LSTAR, (uint64_t)(_syscall_entry));

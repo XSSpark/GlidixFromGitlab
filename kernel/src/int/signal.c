@@ -26,33 +26,59 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <glidix/int/syscall.h>
-#include <glidix/thread/sched.h>
-#include <glidix/util/panic.h>
-#include <glidix/int/exit.h>
 #include <glidix/int/signal.h>
+#include <glidix/thread/process.h>
+#include <glidix/util/log.h>
 
-/**
- * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
- * An entry is allowed to be NULL, to specify an invalid system call. Please ensure that the
- * system calls are numbered correctly in the comments next to them.
- */
-void* _sysCallTable[] = {
-	sys_exit,							// 0
-	sys_sigaction,							// 1
-	sys_sigmask,							// 2
+int sys_sigaction(int signum, user_addr_t uact, user_addr_t uoldact)
+{
+	SigAction sa1, sa2;
+
+	SigAction *act = NULL;
+	if (uact != 0) act = &sa1;
+
+	SigAction *oldact = NULL;
+	if (uoldact != 0) oldact = &sa2;
+
+	if (act != NULL)
+	{
+		int status = procToKernelCopy(act, uact, sizeof(SigAction));
+		if (status != 0) return status;
+	};
+
+	int status = schedSigAction(signum, act, oldact);
+	if (status != 0) return status;
+
+	if (oldact != NULL)
+	{
+		status = procToUserCopy(uoldact, oldact, sizeof(SigAction));
+	};
+
+	return status;
 };
 
-/**
- * Export the number of system calls, so that `syscall.asm` can access it.
- */
-uint64_t _sysCallCount = sizeof(_sysCallTable)/sizeof(void*);
-
-/**
- * This is called when an invalid syscall is detected. `context` is the syscall return context
- * (which enables us to dispatch a signal).
- */
-void _sysCallInvalid(SyscallContext *context)
+ksigset_t sys_sigmask(int how, ksigset_t mask)
 {
-	panic("TODO: can't handle invalid syscalls yet!");
+	// can't affect SIGKILL, SIGSTOP, SIGTHKILL
+	mask &= ~(1UL << SIGKILL);
+	mask &= ~(1UL << SIGSTOP);
+	mask &= ~(1UL << SIGTHKILL);
+
+	Thread *me = schedGetCurrentThread();
+	ksigset_t oldMask = me->sigBlocked;
+
+	switch (how)
+	{
+	case SIG_BLOCK:
+		me->sigBlocked |= mask;
+		break;
+	case SIG_UNBLOCK:
+		me->sigBlocked &= ~mask;
+		break;
+	case SIG_SETMASK:
+		me->sigBlocked = mask;
+		break;
+	};
+
+	return oldMask;
 };

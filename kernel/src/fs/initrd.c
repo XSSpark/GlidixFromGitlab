@@ -33,7 +33,7 @@
 #include <glidix/util/panic.h>
 #include <glidix/util/string.h>
 
-SECTION(".initrd") uint8_t initrdImage[8*1024*1024];
+SECTION(".initrd") uint8_t initrdImage[32*1024*1024];
 
 static uint64_t parseOct(const char *data)
 {
@@ -52,7 +52,7 @@ static void initrdInit(KernelBootInfo *info)
 	{
 		panic("Failed to create /initrd!");
 	};
-	
+
 	TarHeader *header = (TarHeader*) initrdImage;
 	TarHeader *end = (TarHeader*) ((uint64_t)initrdImage + bootInfo->initrdSize);
 	

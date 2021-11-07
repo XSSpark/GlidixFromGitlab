@@ -251,6 +251,30 @@ noreturn void idtReboot()
 	while (1) ASM("cli; hlt");
 };
 
+static void isrDispatchSignal(Regs *regs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
+{
+	kmcontext_gpr_t gprs;
+	gprs.rax = regs->rax;
+	gprs.rbx = regs->rbx;
+	gprs.rcx = regs->rcx;
+	gprs.rdx = regs->rdx;
+	gprs.rsi = regs->rsi;
+	gprs.rdi = regs->rdi;
+	gprs.rbp = regs->rbp;
+	gprs.rsp = regs->rsp;
+	gprs.r8 = regs->r8;
+	gprs.r9 = regs->r9;
+	gprs.r10 = regs->r10;
+	gprs.r11 = regs->r11;
+	gprs.r12 = regs->r12;
+	gprs.r13 = regs->r13;
+	gprs.r14 = regs->r14;
+	gprs.r15 = regs->r15;
+	gprs.rip = regs->rip;
+	
+	schedDispatchSignal(&gprs, fpuRegs, siginfo);
+};
+
 void isrHandler(Regs *regs, FPURegs *fpuregs)
 {
 	if (regs->intNo == I_PAGE_FAULT)
@@ -276,10 +300,15 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 		// valid page fault originating from userspace, we can enable interrupts and handle it
 		sti();
 
-		if (procPageFault(faultAddr, regs->errCode, NULL) != 0)
+		ksiginfo_t siginfo;
+		if (procPageFault(faultAddr, regs->errCode, &siginfo) != 0)
 		{
-			panic("TODO: implement SIGSEGV/SIGBUS");
+			isrDispatchSignal(regs, fpuregs, &siginfo);
 		};
+	}
+	else if (regs->intNo == I_GPF)
+	{
+		panic("GPF occured (rip=0x%lx)\n", regs->rip);
 	}
 	else if (regs->intNo == I_DOUBLE)
 	{

@@ -40,6 +40,11 @@
 #include <glidix/thread/process.h>
 
 /**
+ * The userspace aux code for returning from a signal handler.
+ */
+extern char userAuxSigReturn[];
+
+/**
  * The global scheduler lock.
  */
 static Spinlock schedLock;
@@ -92,7 +97,12 @@ noreturn void _schedReturn(void *stack);
 noreturn void _schedIdle(void *stack);
 
 /**
- * Update the TSS, for the specified kernel stack.
+ * In asched.asm: enter a userspace signal handler.
+ */
+noreturn void _schedEnterSignalHandler(int signum, user_addr_t siginfoAddr, user_addr_t contextAddr, user_addr_t rip);
+
+/**
+ * In sched.asm: update the TSS, for the specified kernel stack.
  */
 void _schedUpdateTSS(void *kernelStack);
 
@@ -516,4 +526,139 @@ void schedSetFSBase(uint64_t fsbase)
 {
 	schedGetCurrentThread()->fsbase = fsbase;
 	wrmsr(MSR_FS_BASE, fsbase);
+};
+
+int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
+{
+	if (signum < 1 || signum >= SIG_NUM || signum == SIGKILL || signum == SIGSTOP || signum == SIGTHKILL)
+	{
+		return -EINVAL;
+	};
+
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	Process *proc = schedGetCurrentThread()->proc;
+	if (oldact != NULL)
+	{
+		memcpy(oldact, &proc->sigActions[signum], sizeof(SigAction));
+	};
+
+	if (act != NULL)
+	{
+		memcpy(&proc->sigActions[signum], act, sizeof(SigAction));
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	return 0;
+};
+
+void schedResetSigActions()
+{
+	IrqState irqState = spinlockAcquire(&schedLock);
+	Process *proc = schedGetCurrentThread()->proc;
+	memset(proc->sigActions, 0, sizeof(proc->sigActions));
+	spinlockRelease(&schedLock, irqState);
+};
+
+user_addr_t schedGetDefaultSignalAction(int signum)
+{
+	switch (signum)
+	{
+	case SIGHUP:
+	case SIGINT:
+	case SIGKILL:
+	case SIGPIPE:
+	case SIGALRM:
+	case SIGTERM:
+	case SIGUSR1:
+	case SIGUSR2:
+	case SIGPOLL:
+		return SIG_TERM;
+	case SIGQUIT:
+	case SIGILL:
+	case SIGTRAP:
+	case SIGABRT:
+	case SIGFPE:
+	case SIGBUS:
+	case SIGSEGV:
+	case SIGSYS:
+		return SIG_CORE;
+	case SIGSTOP:
+	case SIGTSTP:
+	case SIGTTIN:
+	case SIGTTOU:
+		return SIG_STOP;
+	default:
+		return SIG_IGN;
+	};
+};
+
+void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
+{
+	// get the signal disposition
+	SigAction act;
+	int status = schedSigAction(siginfo->si_signo, NULL, &act);
+	ASSERT(status == 0);
+
+	user_addr_t handler = act.sa_sigaction_handler;
+	if (handler == SIG_DFL) handler = schedGetDefaultSignalAction(siginfo->si_signo);
+
+	if (handler == SIG_IGN)
+	{
+		// ignore
+		return;
+	}
+	else if (handler == SIG_TERM || handler == SIG_CORE)
+	{
+		panic("TODO: implement terminating");
+	}
+	else if (handler == SIG_STOP)
+	{
+		panic("TODO: implement stopping");
+	}
+	else if (handler >= 256)
+	{
+		// user handler; first push the GPRs right above the red area
+		user_addr_t gprAddr = gprs->rsp - sizeof(kmcontext_gpr_t) - 128;
+		if (procToUserCopy(gprAddr, gprs, sizeof(kmcontext_gpr_t)) != 0)
+		{
+			panic("TODO: handle failure to copy");
+		};
+
+		// put the signal info on the stack
+		user_addr_t siginfoAddr = (gprAddr - sizeof(ksiginfo_t)) & ~0x7;
+		if (procToUserCopy(siginfoAddr, siginfo, sizeof(ksiginfo_t)) != 0)
+		{
+			panic("TODO: handle failure to copy");
+		};
+
+		// now create the `ucontext_t`, ensuring it is 16-bytes-aligned (required for the
+		// fpuRegs to work)
+		user_addr_t contextAddr = (siginfoAddr - sizeof(kucontext_t)) & ~0xF;
+		kucontext_t ucontext;
+		memset(&ucontext, 0, sizeof(kucontext_t));
+
+		ucontext.uc_sigmask = schedGetCurrentThread()->sigBlocked;
+		memcpy(&ucontext.fpuRegs, fpuRegs, 512);
+		ucontext.gprptr = gprAddr;
+
+		if (procToUserCopy(contextAddr, &ucontext, sizeof(kucontext_t)) != 0)
+		{
+			panic("TODO: handle failure to copy");
+		};
+
+		// mask the signals specified by the action
+		schedGetCurrentThread()->sigBlocked |= act.sa_mask;
+
+		// push the return address onto the stack (will point to userAuxSigReturn)
+		user_addr_t rsp = contextAddr - 8;
+		uint64_t retAddr = (uint64_t) (userAuxSigReturn);
+		if (procToUserCopy(rsp, &retAddr, 8) != 0)
+		{
+			panic("TODO: handle failure to copy");
+		};
+
+		// enter the handler
+		_schedEnterSignalHandler(siginfo->si_signo, siginfoAddr, contextAddr, handler);
+	};
 };
