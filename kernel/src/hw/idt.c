@@ -306,6 +306,10 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 			isrDispatchSignal(regs, fpuregs, &siginfo);
 		};
 	}
+	else if (regs->intNo == I_GPF)
+	{
+		panic("GPF occured (rip=0x%lx)\n", regs->rip);
+	}
 	else if (regs->intNo == I_DOUBLE)
 	{
 		panic("The CPU double-faulted!");

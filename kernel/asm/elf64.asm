@@ -48,7 +48,9 @@ _elfEnter:
 	mov ax, 0x23
 	mov ds, ax
 	mov es, ax
-	mov fs, ax			; sets FSBASE=0 for initial thread
+	
+	xor ax, ax
+	mov fs, ax
 	
 	; zero out the GPRs
 	xor rax, rax

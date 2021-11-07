@@ -27,6 +27,9 @@ lgdt [rax]
 mov ax, 0x10
 mov ds, ax
 mov es, ax
+
+; clear FS/GS
+xor ax, ax
 mov fs, ax
 mov gs, ax
 
