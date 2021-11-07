@@ -283,4 +283,15 @@ int schedSigAction(int signum, const SigAction *act, SigAction *oldact);
  */
 void schedResetSigActions();
 
+/**
+ * Get the signal mask of the calling thread.
+ */
+ksigset_t schedGetSigMask();
+
+/**
+ * Dispatch a signal to the calling thread, with the specified userspace regs. This will exit from kernel space
+ * if necessary and call the signal handler. It will return if the signal is ignored.
+ */
+void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *siginfo);
+
 #endif

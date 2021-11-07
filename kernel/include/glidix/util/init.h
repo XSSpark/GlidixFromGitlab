@@ -60,11 +60,11 @@
  */
 typedef struct
 {
-	uint32_t			size;
 	uint64_t			baseAddr;
 	uint64_t			len;
 	uint32_t			type;
-} PACKED MemoryMapEntry;
+	uint32_t			padding;
+} MemoryMapEntry;
 
 /**
  * Pixel format, passed by the bootloader.
@@ -90,7 +90,7 @@ typedef struct
 	uint64_t			kernelMain;
 	uint64_t			gdtPointerVirt;
 	uint32_t			pml4Phys;
-	uint32_t			mmapSize;
+	uint32_t			mmapCount;
 	MemoryMapEntry*			mmap;
 	uint64_t			initrdSize;
 	uint64_t			end;

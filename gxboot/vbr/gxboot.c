@@ -130,11 +130,46 @@ void termputp64(qword_t addr)
 };
 
 dword_t placement;
+dword_t currentRegionEnd;
 void *balloc(dword_t align, dword_t size)
 {
 	placement = (placement + align - 1) & ~(align-1);
 	dword_t result = placement;
 	placement += size;
+
+	if (placement > currentRegionEnd)
+	{
+		dword_t entIndex = 0;
+
+		MemoryMap mm;
+		do
+		{
+			int ok = 1;
+			entIndex = biosGetMap(entIndex, &mm.baseAddr, &ok);
+			if (!ok)
+			{
+				termput("ERROR: Ran out of memory!\n");
+				while (1) asm volatile ("cli ; hlt");
+			};
+			
+			if (mm.type == 1 && (mm.baseAddr & 0xFFF) == 0)
+			{
+				if (mm.baseAddr >= currentRegionEnd)
+				{
+					break;
+				};
+			};
+		} while (entIndex != 0);
+
+		placement = mm.baseAddr;
+		currentRegionEnd = mm.baseAddr + mm.len;
+		termput("New region: ");
+		termputp64(mm.baseAddr);
+		termput(" up to ");
+		termputp64(currentRegionEnd);
+		return balloc(align, size);
+	};
+
 	return (void*) result;
 };
 
@@ -383,6 +418,33 @@ static dword_t findRSDP()
 	return findRSDPInRange(start, start+0x400);
 };
 
+static void printMemoryMapAndInitAlloc()
+{
+	termput("Memory map:\n");
+	dword_t entIndex = 0;
+
+	MemoryMap mm;
+	do
+	{
+		int ok = 1;
+		entIndex = biosGetMap(entIndex, &mm, &ok);
+		if (!ok) break;
+		
+		termput("  ");
+		termputp64(mm.baseAddr);
+		termput(" - ");
+		termputp64(mm.baseAddr + mm.len);
+		termput(" (type ");
+		termputd(mm.type);
+		termput(")\n");
+		
+		if (mm.baseAddr == placement)
+		{
+			currentRegionEnd = mm.baseAddr + mm.len;
+		};
+	} while (entIndex != 0);
+};
+
 void bmain()
 {
 	fixedWidth = 0;
@@ -392,8 +454,14 @@ void bmain()
 	
 	int i;
 
-	// initialize placement allocator
+	// print the memory map and init allocator
 	placement = (dword_t) 0x100000;
+	printMemoryMapAndInitAlloc();
+	if (currentRegionEnd == 0)
+	{
+		termput("ERROR: Failed to find initial memory region!\n");
+		asm volatile ("cli; hlt");
+	}
 
 	fsInit();
 
@@ -731,7 +799,7 @@ void bmain()
 	
 	// allocate 2KB for the memory map
 	qword_t mmapBase = (stack - 0x800ULL) & ~0xFULL;
-	dword_t mmapSize = 0;
+	dword_t mmapCount = 0;
 	
 	// build the memory map
 	MemoryMap *mmapPut = (MemoryMap*) virt2phys(mmapBase);
@@ -748,12 +816,11 @@ void bmain()
 	do
 	{
 		int ok = 1;
-		entIndex = biosGetMap(entIndex, &mmapPut->baseAddr, &ok);
+		entIndex = biosGetMap(entIndex, mmapPut, &ok);
 		if (!ok) break;
 		
-		mmapPut->size = 20;
 		mmapPut++;
-		mmapSize += 24;
+		mmapCount++;
 	} while (entIndex != 0);
 	
 	dtermput("OK\n");
@@ -799,7 +866,7 @@ void bmain()
 	mmap(backvirt, (dword_t)backbuffer, vbeModeInfo.height * vbeModeInfo.pitch, PT_WRITE);
 	
 	kinfo->pml4Phys = (dword_t) pml4;
-	kinfo->mmapSize = mmapSize;
+	kinfo->mmapCount = mmapCount;
 	kinfo->mmapVirt = mmapBase;
 	kinfo->initrdSize = initrd.size;
 	kinfo->end = (qword_t) (dword_t) balloc(0x1000, 0);

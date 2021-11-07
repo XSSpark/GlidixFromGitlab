@@ -458,11 +458,11 @@ typedef struct
 
 typedef struct
 {
-	dword_t			size;
 	qword_t			baseAddr;
 	qword_t			len;
 	dword_t			type;
-} __attribute__ ((packed)) MemoryMap;
+	dword_t			padding;
+} MemoryMap;
 
 /**
  * Pixel format as defined by DDI and the kernel; passed to describe the framebuffer.
@@ -503,7 +503,7 @@ typedef struct
 	qword_t				kernelMain;			/* 0x08 */
 	qword_t				gdtPointerVirt;			/* 0x10 */
 	dword_t				pml4Phys;			/* 0x18 */
-	dword_t				mmapSize;			/* 0x1C */
+	dword_t				mmapCount;			/* 0x1C */
 	qword_t				mmapVirt;			/* 0x20 */
 	qword_t				initrdSize;			/* 0x28 */
 	qword_t				end;				/* 0x30 */

@@ -28,8 +28,57 @@
 
 #include <glidix/int/signal.h>
 #include <glidix/thread/process.h>
+#include <glidix/util/log.h>
 
-int sys_sigaction(int signum, user_addr_t act, user_addr_t oldact)
+int sys_sigaction(int signum, user_addr_t uact, user_addr_t uoldact)
 {
-	return -EFAULT;
+	SigAction sa1, sa2;
+
+	SigAction *act = NULL;
+	if (uact != 0) act = &sa1;
+
+	SigAction *oldact = NULL;
+	if (uoldact != 0) oldact = &sa2;
+
+	if (act != NULL)
+	{
+		int status = procToKernelCopy(act, uact, sizeof(SigAction));
+		if (status != 0) return status;
+	};
+
+	int status = schedSigAction(signum, act, oldact);
+	if (status != 0) return status;
+
+	if (oldact != NULL)
+	{
+		status = procToUserCopy(uoldact, oldact, sizeof(SigAction));
+	};
+
+	return status;
+};
+
+ksigset_t sys_sigmask(int how, ksigset_t mask)
+{
+	// can't affect SIGKILL, SIGSTOP, SIGTHKILL
+	mask &= ~(1UL << SIGKILL);
+	mask &= ~(1UL << SIGSTOP);
+	mask &= ~(1UL << SIGTHKILL);
+
+	Thread *me = schedGetCurrentThread();
+	ksigset_t oldMask = me->sigBlocked;
+
+	switch (how)
+	{
+	case SIG_BLOCK:
+		me->sigBlocked |= mask;
+		break;
+	case SIG_UNBLOCK:
+		me->sigBlocked &= ~mask;
+		break;
+	case SIG_SETMASK:
+		me->sigBlocked = mask;
+		break;
+	};
+
+	return oldMask;
 };

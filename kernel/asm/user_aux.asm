@@ -27,6 +27,45 @@
 section .user_aux
 bits 64
 
-global userAuxHello
-userAuxHello:
-	ret
+global userAuxSigReturn
+
+userAuxSigReturn:
+	; restore the old signal mask
+	mov rax, 2				; sys_sigmask
+	mov rdi, 2				; SIG_SETMASK
+	mov rsi, [rsp+8]			; get sigmask from the context
+	syscall
+
+	; load the FPU regs from the context
+	fxrstor [rsp+0x30]
+
+	; set the stack pointer to the kmcontext_gpr_t pointer.
+	; this pops context header (uc_link, etc), the FPU regs,
+	; and the siginfo_t, and leaves us at the kmcontext_gpr_t
+	; pointer, which is just above the red zone
+	mov rsp, [rsp+0x230]
+
+	; pop off the copy of return RSP and ignore it
+	pop rax
+
+	; now pop off the values of the registers
+	pop rax
+	pop rbx
+	pop rcx
+	pop rdx
+	pop rsi
+	pop rdi
+	pop rbp
+	pop r8
+	pop r9
+	pop r10
+	pop r11
+	pop r12
+	pop r13
+	pop r14
+	pop r15
+
+	; 2 things left on the stack: the return RIP, and the red
+	; zone; use RET to jump to the return address and to pop off
+	; the 128 bytes
+	ret 128

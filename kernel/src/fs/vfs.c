@@ -698,6 +698,7 @@ ssize_t vfsInodeRead(Inode *inode, void *buffer, size_t size, off_t pos)
 			size -= readNow;
 			put += readNow;
 			sizeReadGood += readNow;
+			pos += readNow;
 		};
 
 		mutexUnlock(&inode->pageCacheLock);
@@ -758,6 +759,7 @@ ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos)
 			size -= writeNow;
 			scan += writeNow;
 			sizeWrittenGood += writeNow;
+			pos += size;
 		};
 
 		mutexUnlock(&inode->pageCacheLock);

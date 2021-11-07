@@ -29,15 +29,22 @@
 #include <glidix/util/log.h>
 #include <glidix/display/console.h>
 #include <glidix/util/format.h>
+#include <glidix/hw/port.h>
 
 /**
  * Size of the buffer used for string formatting.
  */
 #define	FORMAT_BUFFER_SIZE						2046
 
+static void kputE9(const char *str)
+{
+	while (*str != 0) outb(0xE9, *str++);
+};
+
 void kputlog(const char *str)
 {
 	// TODO: log targets other than the console
+	kputE9(str);
 	conWriteString(str);
 };
 
