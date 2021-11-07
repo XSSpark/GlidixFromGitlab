@@ -102,7 +102,7 @@ _syscall_entry:
 	fxrstor [rsp]
 
 	; restore userspace data segments
-	mov r8, 0x10
+	mov r8, 0x23
 	mov ds, r8w
 	mov es, r8w
 
