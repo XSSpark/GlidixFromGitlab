@@ -134,16 +134,8 @@ struct CPU_
 	uint64_t syscallSaveSlot;					// 0x18
 
 	// --- END OF ASSEMBLY-USEABLE AREA ---
-
-	/**
-	 * The TSS for this CPU.
-	 */
-	TSS tss;
-
-	/**
-	 * The 'idle thread' for this CPU.
-	 */
-	Thread idleThread;
+	// --- PLEASE KEEP THIS ALIGNED AT 16-BYTE BOUNDARY (CURRENTLY AT
+	// 0x20) SO THAT THE STACKS BELOW ARE ALIGNED! ---
 
 	/**
 	 * Space reserved for the idle thread stack.
@@ -154,6 +146,16 @@ struct CPU_
 	 * Space reserved for the stratup thread stack.
 	 */
 	char startupStack[CPU_STARTUP_STACK_SIZE];
+
+	/**
+	 * The TSS for this CPU.
+	 */
+	TSS tss;
+
+	/**
+	 * The 'idle thread' for this CPU.
+	 */
+	Thread idleThread;
 
 	/**
 	 * This CPU's APIC ID.
