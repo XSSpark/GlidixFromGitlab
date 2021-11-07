@@ -308,7 +308,7 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	}
 	else if (regs->intNo == I_GPF)
 	{
-		panic("GPF occured (rip=0x%lx)\n", regs->rip);
+		panic("GPF occured (rip=0x%lx, code=0x%lx)\n", regs->rip, regs->errCode);
 	}
 	else if (regs->intNo == I_DOUBLE)
 	{
