@@ -17,6 +17,7 @@ _start:
 onSIGSEGV:
 	ret
 
+section .data
 sigactionSIGSEGV:
 	dq onSIGSEGV
 	dq 0

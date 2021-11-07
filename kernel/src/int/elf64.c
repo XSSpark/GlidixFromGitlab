@@ -159,6 +159,7 @@ int elfReadInfo(File *fp, ElfInfo *info)
 			if (proghead->p_flags & PF_W) seg->prot |= PROT_WRITE;
 			if (proghead->p_flags & PF_X) seg->prot |= PROT_EXEC;
 
+			seg++;
 			info->numSegments++;
 		}
 		else
