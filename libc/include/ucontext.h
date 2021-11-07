@@ -33,11 +33,29 @@
 
 typedef struct
 {
-	uint64_t	rflags;
-	uint64_t	rip;
-	uint64_t	rdi, rsi, rbp, rbx, rdx, rcx, rax;
-	uint64_t	r8, r9, r10, r11, r12, r13, r14, r15;
-	uint64_t	rsp;
+	unsigned long rsp;
+	unsigned long rax;
+	unsigned long rbx;
+	unsigned long rcx;
+	unsigned long rdx;
+	unsigned long rsi;
+	unsigned long rdi;
+	unsigned long rbp;
+	unsigned long r8;
+	unsigned long r9;
+	unsigned long r10;
+	unsigned long r11;
+	unsigned long r12;
+	unsigned long r13;
+	unsigned long r14;
+	unsigned long r15;
+	unsigned long rip;
+} __mcontext_gprs_t;
+
+typedef struct
+{
+	char fpu_save_area[512];
+	__mcontext_gprs_t *gprs;
 } mcontext_t;
 
 typedef struct __ucontext ucontext_t;
@@ -46,6 +64,8 @@ struct __ucontext
 	ucontext_t*	uc_link;
 	sigset_t	uc_sigmask;
 	stack_t		uc_stack;
+	unsigned long	__uc_padding;
+
 	mcontext_t	uc_mcontext;
 };
 
