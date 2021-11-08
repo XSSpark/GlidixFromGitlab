@@ -5,20 +5,5 @@ section .text
 
 global _start
 _start:
-	mov rax, 1				; sigaction
-	mov rdi, 11				; SIGSEGV
-	mov rsi, sigactionSIGSEGV		; the struct sigaction for our handler
-	xor rdx, rdx				; oldact = NULL
+	mov rax, 999
 	syscall
-
-	xor rax, rax
-	mov [rax], rax
-
-onSIGSEGV:
-	ret
-
-section .data
-sigactionSIGSEGV:
-	dq onSIGSEGV
-	dq 0
-	dq 0

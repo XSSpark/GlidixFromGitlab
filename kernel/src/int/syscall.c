@@ -30,7 +30,7 @@
 #include <glidix/thread/sched.h>
 #include <glidix/util/panic.h>
 #include <glidix/int/exit.h>
-#include <glidix/int/signal.h>
+#include <glidix/util/string.h>
 
 /**
  * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
@@ -49,10 +49,34 @@ void* _sysCallTable[] = {
 uint64_t _sysCallCount = sizeof(_sysCallTable)/sizeof(void*);
 
 /**
- * This is called when an invalid syscall is detected. `context` is the syscall return context
- * (which enables us to dispatch a signal).
+ * This is called when an invalid syscall is detected.
  */
-void _sysCallInvalid(SyscallContext *context)
+void _sysCallInvalid()
 {
-	panic("TODO: can't handle invalid syscalls yet!");
+	ksiginfo_t si;
+	memset(&si, 0, sizeof(ksiginfo_t));
+
+	si.si_signo = SIGSYS;
+	sysDispatchSignal(&si, (uint64_t) -ENOSYS);
+};
+
+void sysDispatchSignal(ksiginfo_t *si, uint64_t rax)
+{
+	SyscallContext *ctx = schedGetCurrentThread()->syscallContext;
+
+	kmcontext_gpr_t gprs;
+	memset(&gprs, 0, sizeof(gprs));
+
+	gprs.rax = rax;
+	gprs.rbx = ctx->rbx;
+	gprs.rbp = ctx->rbp;
+	gprs.rsp = ctx->rsp;
+	gprs.rflags = ctx->rflags;
+	gprs.r12 = ctx->r12;
+	gprs.r13 = ctx->r13;
+	gprs.r14 = ctx->r14;
+	gprs.r15 = ctx->r15;
+	gprs.rip = ctx->rip;
+
+	schedDispatchSignal(&gprs, &ctx->fpuRegs, si);
 };
