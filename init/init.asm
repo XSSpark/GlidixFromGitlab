@@ -5,5 +5,8 @@ section .text
 
 global _start
 _start:
-	mov rax, 999
+	mov rax, 3			; fork
 	syscall
+
+	xchg bx, bx
+	jmp $

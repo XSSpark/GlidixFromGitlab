@@ -247,6 +247,32 @@ struct Process_
 };
 
 /**
+ * Context of page cloning.
+ */
+typedef struct
+{
+	/**
+	 * The parent process (the current process).
+	 */
+	Process *parent;
+
+	/**
+	 * The mapping tree of the child.
+	 */
+	TreeMap *childTree;
+
+	/**
+	 * The child PML4.
+	 */
+	void *childPageTable;
+
+	/**
+	 * Initially set to 0, set to an error number if one occurs.
+	 */
+	errno_t err;
+} PageCloneContext;
+
+/**
  * Create a new process.
  * 
  * The new process inherits the majority of the calling process' information, such as root dir,
@@ -317,5 +343,16 @@ int procToKernelCopy(void *ptr, user_addr_t addr, size_t size);
  * `-EFAULT`) if the copy was not possible.
  */
 int procToUserCopy(user_addr_t addr, const void *ptr, size_t size);
+
+/**
+ * Get (and upref) a process given a pid. Returns NULL if no such process exists. Remember to call `procUnref()`
+ * on the returned handle later.
+ */
+Process* procByPID(pid_t pid);
+
+/**
+ * Increment the reference count of the process, and return it again.
+ */
+Process* procDup(Process *proc);
 
 #endif

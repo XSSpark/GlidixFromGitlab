@@ -72,12 +72,69 @@ static void procInit()
 
 KERNEL_INIT_ACTION(procInit, KIA_PROCESS_INIT);
 
+static ProcessMapping* procMappingDup(ProcessMapping *mapping)
+{
+	__sync_add_and_fetch(&mapping->refcount, 1);
+	return mapping;
+};
+
+static void procMappingUnref(ProcessMapping *mapping)
+{
+	if (__sync_add_and_fetch(&mapping->refcount, -1) == 0)
+	{
+		vfsInodeUnref(mapping->inode);
+		kfree(mapping);
+	};
+};
+
+static void _procUnrefMappingWalk(TreeMap *treemap, uint32_t index, void *value_, void *context_)
+{
+	ProcessMapping *mapping = (ProcessMapping*) value_;
+	procMappingUnref(mapping);
+};
+
+static void procDeletePageTableRecur(void *ptr, int depth)
+{
+	if (depth == 3)
+	{
+		// `ptr` actually points to a user page
+		komUserPageUnref(ptr);
+	}
+	else
+	{
+		uint64_t *table = (uint64_t*) ptr;
+		int i;
+		for (i=0; i<512; i++)
+		{
+			uint64_t ent = table[i];
+			if (ent & PT_PRESENT)
+			{
+				void *sub = komPhysToVirt(ent & PT_PHYS_MASK);
+				procDeletePageTableRecur(sub, depth+1);
+			};
+		};
+
+		komReleaseBlock(ptr, KOM_BUCKET_PAGE);
+	};
+};
+
+static void procDeletePageTable(void *pml4)
+{
+	Thread *me = schedGetCurrentThread();
+	if (me->proc != NULL && me->proc->pagetabVirt == pml4)
+	{
+		panic("Process is trying to delete its own page table!");
+	};
+
+	procDeletePageTableRecur(pml4, 0);
+};
+
 void procUnref(Process *proc)
 {
 	if (__sync_add_and_fetch(&proc->refcount, -1) == 0)
 	{
-		// TODO: delete all the pages
-		komReleaseBlock(proc->pagetabVirt, KOM_BUCKET_PAGE);
+		treemapWalk(proc->mappingTree, _procUnrefMappingWalk, NULL);
+		procDeletePageTable(proc->pagetabVirt);
 		treemapDestroy(proc->threads);
 		treemapDestroy(proc->mappingTree);
 		vfsPathWalkerDestroy(&proc->rootDir);
@@ -111,19 +168,140 @@ static void procStartup(void *context_)
 	panic("can't return from thread func yet!!");
 };
 
-static ProcessMapping* procMappingDup(ProcessMapping *mapping)
+/**
+ * Get the page table entry for memory address `addr`. Call this only when the pagemap lock is acquired.
+ * If the PTE does not yet exist, it will be as unmapped. NULL is returned if the PTE does not exist and
+ * we have furthermore ran out of memory.
+ */
+static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
 {
-	__sync_add_and_fetch(&mapping->refcount, 1);
-	return mapping;
+	PageNodeEntry *nodes[4];
+	pagetabGetNodes((void*)addr, nodes);
+
+	int i;
+	for (i=0; i<3; i++)
+	{
+		PageNodeEntry *node = nodes[i];
+		if (node->value == 0)
+		{
+			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+			if (nextLevel == NULL)
+			{
+				return NULL;
+			};
+
+			memZeroPage(nextLevel);
+
+			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
+			// so that we can set these per-page without worrying about the higher levels
+			node->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;
+
+			// invalidate the next node to apply the above
+			invlpg(nodes[i+1]);
+		};
+	};
+
+	return nodes[3];
 };
 
-static void procMappingUnref(ProcessMapping *mapping)
+/**
+ * Gets a useable pointer to the PTE for `addr` in a different address space. This is only used while
+ * cloning page tables. Returns NULL if we ran out of memory trying to allocate paging structures.
+ */
+static PageNodeEntry* _procGetForeignPageTableEntry(void *pml4, user_addr_t addr)
 {
-	if (__sync_add_and_fetch(&mapping->refcount, -1) == 0)
+	int indexes[4];
+	indexes[3] = (addr >> (12)) & 0x1FF;
+	indexes[2] = (addr >> (12+9)) & 0x1FF;
+	indexes[1] = (addr >> (12+9+9)) & 0x1FF;
+	indexes[0] = (addr >> (12+9+9+9)) & 0x1FF;
+
+	void *table = pml4;
+
+	int i;
+	for (i=0; i<4; i++)
 	{
-		vfsInodeUnref(mapping->inode);
-		kfree(mapping);
+		PageNodeEntry *ent = (PageNodeEntry*) table + indexes[i];
+
+		// if we are at the final level, just return it (it's the PTE)
+		if (i == 3) return ent;
+
+		if (ent->value == 0)
+		{
+			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+			if (nextLevel == NULL)
+			{
+				return NULL;
+			};
+
+			memZeroPage(nextLevel);
+
+			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
+			// so that we can set these per-page without worrying about the higher levels
+			ent->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;	
+
+			// go to it
+			table = nextLevel;
+		}
+		else
+		{
+			table = komPhysToVirt(ent->value & PT_PHYS_MASK);
+			ASSERT(table != NULL);
+		};
 	};
+
+	// should never get here
+	return NULL;
+};
+
+static void _procPageCloneWalkCallback(TreeMap *parentTree, uint32_t index, void *value_, void *context_)
+{
+	PageCloneContext *ctx = (PageCloneContext*) context_;
+	ProcessMapping *mapping = (ProcessMapping*) value_;
+	user_addr_t addr = ((user_addr_t) index) << 12;
+	PageNodeEntry *parentPTE = _procGetPageTableEntry(addr);
+	PageNodeEntry *childPTE = _procGetForeignPageTableEntry(ctx->childPageTable, addr);
+	
+	if (parentPTE == NULL || childPTE == NULL)
+	{
+		ctx->err = ENOMEM;
+		return;
+	};
+
+	// copy the mapping into the new table
+	if (treemapSet(ctx->childTree, index, mapping) != 0)
+	{
+		ctx->err = ENOMEM;
+		return;
+	};
+
+	// successful, increment refcount
+	procMappingDup(mapping);
+
+	// if this is a private mapping, and we have PROT_WRITE permission, and the page is mapped writeable,
+	// we must turn it into copy-on-write
+	if ((mapping->mflags & MAP_PRIVATE) && (parentPTE->value & PT_PRESENT)
+		&& (parentPTE->value & PT_PROT_WRITE))
+	{
+		// mark non-writeable, copy-on-write for parent
+		parentPTE->value &= ~(PT_WRITE);
+		parentPTE->value |= PT_COW;
+
+		// inform any other CPUs running this process that this happened
+		invlpg((void*) addr);
+		cpuInvalidatePage(ctx->parent->cr3, (void*) addr);
+	};
+
+	// if the page is present, increase its refcount
+	if (parentPTE->value & PT_PRESENT)
+	{
+		void *page = komPhysToVirt(parentPTE->value & PT_PHYS_MASK);
+		ASSERT(page != NULL);
+		komUserPageDup(page);
+	};
+
+	// map into the new table
+	childPTE->value = parentPTE->value;
 };
 
 pid_t procCreate(KernelThreadFunc func, void *param)
@@ -201,19 +379,19 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	newPML4[510] = myPML4[510];
 	newPML4[511] = pagetabGetPhys(myPML4) | PT_PRESENT | PT_WRITE | PT_NOEXEC;
 
-	// TODO: if the calling process is non-kernel, clone the page table
-	if (me->proc != NULL)
-	{
-		panic("I don't know how to clone page tables yet!");
-	};
-
 	// fill out the process structure
 	memset(child, 0, sizeof(Process));
 	child->cr3 = pagetabGetPhys(myPML4);
 	child->pagetabVirt = newPML4;
 	child->mappingTree = mappingTree;
 	child->parent = me->proc == NULL ? 1 : me->proc->pid;
-	
+
+	child->rootDir = vfsPathWalkerGetRoot();
+	child->currentDir = vfsPathWalkerGetCurrentDir();
+	child->threads = threads;
+	child->refcount = 1;
+
+	// if the calling process is non-kernel, inherit properties
 	if (me->proc != NULL)
 	{
 		child->euid = me->proc->euid;
@@ -223,12 +401,24 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 		child->egid = me->proc->egid;
 		child->sgid = me->proc->sgid;
 		child->rgid = me->proc->rgid;
-	};
 
-	child->rootDir = vfsPathWalkerGetRoot();
-	child->currentDir = vfsPathWalkerGetCurrentDir();
-	child->threads = threads;
-	child->refcount = 1;
+		PageCloneContext ctx;
+		ctx.parent = me->proc;
+		ctx.childPageTable = newPML4;
+		ctx.childTree = mappingTree;
+		ctx.err = 0;
+
+		mutexLock(&me->proc->mapLock);
+		treemapWalk(me->proc->mappingTree, _procPageCloneWalkCallback, &ctx);
+		mutexUnlock(&me->proc->mapLock);
+
+		if (ctx.err != 0)
+		{
+			procUnref(child);
+			kfree(info);
+			return -ctx.err;
+		};
+	};
 
 	// try allocating a PID
 	mutexLock(&procTableLock);
@@ -275,42 +465,6 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	mutexUnlock(&procTableLock);
 	schedDetachKernelThread(startupThread);
 	return pid;
-};
-
-/**
- * Get the page table entry for memory address `addr`. Call this only when the pagemap lock is acquired.
- * If the PTE does not yet exist, it will be as unmapped. NULL is returned if the PTE does not exist and
- * we have furthermore ran out of memory.
- */
-static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
-{
-	PageNodeEntry *nodes[4];
-	pagetabGetNodes((void*)addr, nodes);
-
-	int i;
-	for (i=0; i<3; i++)
-	{
-		PageNodeEntry *node = nodes[i];
-		if (node->value == 0)
-		{
-			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
-			if (nextLevel == NULL)
-			{
-				return NULL;
-			};
-
-			memZeroPage(nextLevel);
-
-			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
-			// so that we can set these per-page without worrying about the higher levels
-			node->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;
-
-			// invalidate the next node to apply the above
-			invlpg(nodes[i+1]);
-		};
-	};
-
-	return nodes[3];
 };
 
 user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err)
@@ -722,4 +876,20 @@ int procToUserCopy(user_addr_t addr, const void *ptr, size_t size)
 	mutexUnlock(&proc->mapLock);
 
 	return status;
+};
+
+Process* procByPID(pid_t pid)
+{
+	mutexLock(&procTableLock);
+	Process *proc = (Process*) treemapGet(procTable, pid);
+	if (proc != NULL) procDup(proc);
+	mutexUnlock(&procTableLock);
+
+	return proc;
+};
+
+Process* procDup(Process *proc)
+{
+	__sync_add_and_fetch(&proc->refcount, 1);
+	return proc;
 };

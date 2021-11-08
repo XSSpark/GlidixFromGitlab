@@ -31,6 +31,7 @@
 #include <glidix/util/panic.h>
 #include <glidix/int/exit.h>
 #include <glidix/util/string.h>
+#include <glidix/int/procops.h>
 
 /**
  * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
@@ -41,6 +42,7 @@ void* _sysCallTable[] = {
 	sys_exit,							// 0
 	sys_sigaction,							// 1
 	sys_sigmask,							// 2
+	sys_fork,							// 3
 };
 
 /**
