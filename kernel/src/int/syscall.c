@@ -80,3 +80,18 @@ void sysDispatchSignal(ksiginfo_t *si, uint64_t rax)
 
 	schedDispatchSignal(&gprs, &ctx->fpuRegs, si);
 };
+
+/**
+ * Check for signals, and dispatch them (with `rax` value on return) if there are any; otherwise,
+ * simply return `rax`.
+ */
+uint64_t _sysCheckSignals(uint64_t rax)
+{
+	ksiginfo_t si;
+	if (schedCheckSignals(&si) == 0)
+	{
+		sysDispatchSignal(&si, rax);
+	};
+
+	return rax;
+};

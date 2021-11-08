@@ -363,7 +363,14 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	else
 	{
 		// unsupported interrupt
-		panic("Receive unexpected interrupt: %lu", regs->intNo);
+		panic("Received unexpected interrupt: %lu", regs->intNo);
+	};
+
+	// check for signals
+	ksiginfo_t si;
+	if (schedCheckSignals(&si) == 0)
+	{
+		isrDispatchSignal(regs, fpuregs, &si);
 	};
 };
 

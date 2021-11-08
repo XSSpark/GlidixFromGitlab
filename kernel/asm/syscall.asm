@@ -30,6 +30,7 @@ bits 64
 extern _sysCallTable
 extern _sysCallCount
 extern _sysCallInvalid
+extern _sysCheckSignals
 
 global _syscall_entry
 
@@ -86,6 +87,11 @@ _syscall_entry:
 	; put the fourth argument back into RCX and call
 	mov rcx, r10
 	call rax
+
+	; check for signals; this takes the signal return value as an argument, then returns it
+	; again
+	mov rdi, rax
+	call _sysCheckSignals
 
 	; disable interrupts before returning
 	cli

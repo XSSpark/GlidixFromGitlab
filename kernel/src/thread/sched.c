@@ -662,3 +662,40 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		_schedEnterSignalHandler(siginfo->si_signo, siginfoAddr, contextAddr, handler);
 	};
 };
+
+int schedCheckSignals(ksiginfo_t *si)
+{
+	Thread *me = schedGetCurrentThread();
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t pending = me->sigPending;
+	if (me->proc != NULL) pending |= me->proc->sigPending;
+
+	ksigset_t ready = pending & ~me->sigBlocked;
+	int i;
+	for (i=1; i<SIG_NUM; i++)
+	{
+		if (ready & (1UL << i))
+		{
+			if (me->proc != NULL)
+			{
+				if (me->proc->sigPending & (1UL << i))
+				{
+					memcpy(si, &me->proc->sigInfo[i], sizeof(ksiginfo_t));
+					spinlockRelease(&schedLock, irqState);
+					return 0;
+				};
+			};
+
+			if (me->sigPending & (1UL << i))
+			{
+				memcpy(si, &me->sigInfo[i], sizeof(ksiginfo_t));
+				spinlockRelease(&schedLock, irqState);
+				return 0;
+			};
+		};
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	return -1;
+};
