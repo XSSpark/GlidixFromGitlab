@@ -271,6 +271,7 @@ static void isrDispatchSignal(Regs *regs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
 	gprs.r14 = regs->r14;
 	gprs.r15 = regs->r15;
 	gprs.rip = regs->rip;
+	gprs.rflags = regs->rflags;
 	
 	schedDispatchSignal(&gprs, fpuRegs, siginfo);
 };

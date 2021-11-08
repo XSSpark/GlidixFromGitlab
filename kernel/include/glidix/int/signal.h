@@ -217,6 +217,7 @@ typedef struct
 typedef struct
 {
 	uint64_t rsp;			// first so it can be discarded
+	uint64_t rflags;
 	uint64_t rax;
 	uint64_t rbx;
 	uint64_t rcx;

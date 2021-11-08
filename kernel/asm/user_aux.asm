@@ -49,6 +49,7 @@ userAuxSigReturn:
 	pop rax
 
 	; now pop off the values of the registers
+	popf
 	pop rax
 	pop rbx
 	pop rcx
