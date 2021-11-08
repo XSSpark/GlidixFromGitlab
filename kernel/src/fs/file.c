@@ -55,6 +55,20 @@ File* vfsDup(File *fp)
 	return fp;
 };
 
+File* vfsFork(File *fp)
+{
+	File *newFP = (File*) kmalloc(sizeof(File));
+	if (newFP == NULL) return NULL;
+
+	newFP->oflags = fp->oflags;
+	newFP->refcount = 1;
+	newFP->walker = vfsPathWalkerDup(&fp->walker);
+	mutexInit(&newFP->posLock);
+	newFP->offset = fp->offset;
+
+	return newFP;
+};
+
 void vfsClose(File *fp)
 {
 	if (__sync_add_and_fetch(&fp->refcount, -1) == 0)

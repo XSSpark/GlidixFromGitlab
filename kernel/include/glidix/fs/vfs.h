@@ -392,6 +392,13 @@ Dentry* vfsDentryGet(Inode *dir, const char *name, errno_t *err);
 int vfsCreateDirectory(struct File_ *fp, const char *path, mode_t mode);
 
 /**
+ * Create a character device with the specified inode operations, and the special access mode. Returns
+ * 0 on success, or a negated error number on error. If `start` is not NULL, it specifies the directory
+ * where relative paths will start.
+ */
+int vfsCreateCharDev(struct File_ *start, const char *path, mode_t mode, InodeOps *ops);
+
+/**
  * Open (and possibly create) a file. `start` is a file pointer referring to the directory which will
  * be used as the starting point for relative paths; or NULL if the current working directory should
  * be used. Returns a file pointer on success, or NULL on error. If `err` is not NULL, the error number

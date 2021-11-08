@@ -91,6 +91,13 @@ File* vfsOpenInode(PathWalker *walker, int oflags, errno_t *err);
 File* vfsDup(File *fp);
 
 /**
+ * Fork a file description: create a new one pointing to the same file, but with an independent offset.
+ * 
+ * Only returns NULL if we ran out of memory.
+ */
+File* vfsFork(File *fp);
+
+/**
  * Decrement the reference count of the file, and if it's now zero, clean up the file structures.
  */
 void vfsClose(File *fp);

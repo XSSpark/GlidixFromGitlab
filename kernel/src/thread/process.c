@@ -418,6 +418,30 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 			kfree(info);
 			return -ctx.err;
 		};
+
+		mutexLock(&me->proc->fileTableLock);
+		int fd;
+		for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+		{
+			FileTableEntry *oldEnt = &me->proc->fileTable[fd];
+			FileTableEntry *newEnt = &child->fileTable[fd];
+
+			if (oldEnt->fp != NULL && oldEnt->fp != PROC_FILE_RESV)
+			{
+				File *newFP = vfsFork(oldEnt->fp);
+				if (newFP == NULL)
+				{
+					mutexUnlock(&me->proc->fileTableLock);
+					procUnref(child);
+					kfree(info);
+					return -ENOMEM;
+				};
+
+				newEnt->fp = newFP;
+				newEnt->cloexec = oldEnt->cloexec;
+			};
+		};
+		mutexUnlock(&me->proc->fileTableLock);
 	};
 
 	// try allocating a PID
@@ -658,6 +682,21 @@ void procBeginExec()
 
 	// reset signal dispositions
 	schedResetSigActions();
+
+	// close all cloexec files
+	mutexLock(&proc->fileTableLock);
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		FileTableEntry *ent = &proc->fileTable[fd];
+		if (ent->cloexec && ent->fp != NULL)
+		{
+			vfsClose(ent->fp);
+			ent->fp = NULL;
+			ent->cloexec = 0;
+		};
+	};
+	mutexUnlock(&proc->fileTableLock);
 	
 	// unmap all userspace pages
 	mutexLock(&proc->mapLock);
@@ -848,6 +887,56 @@ int procToKernelCopy(void *ptr, user_addr_t addr, size_t size)
 	return status;
 };
 
+int procReadUserString(char *buffer, user_addr_t addr)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+	char *put = buffer;
+
+	int status = 0;
+	size_t size = PROC_USER_STRING_SIZE;
+
+	mutexLock(&proc->mapLock);
+	while (size != 0)
+	{
+		if (_procPageFault(addr, 0, NULL) != 0)
+		{
+			status = -EFAULT;
+			break;
+		};
+
+		size_t pageLeft = 0x1000 - (addr & 0xFFF);
+		size_t sizeToCopy = size > pageLeft ? pageLeft : size;
+
+		memcpy(put, (void*)addr, sizeToCopy);
+
+		size_t i;
+		for (i=0; i<sizeToCopy; i++)
+		{
+			if (put[i] == 0)
+			{
+				break;
+			};
+		};
+
+		if (i != sizeToCopy)
+		{
+			break;
+		};
+
+		addr += sizeToCopy;
+		put += sizeToCopy;
+		size -= sizeToCopy;
+	};
+	mutexUnlock(&proc->mapLock);
+
+	if (size == 0)
+	{
+		status = -EOVERFLOW;
+	};
+
+	return status;
+};
+
 int procToUserCopy(user_addr_t addr, const void *ptr, size_t size)
 {
 	Process *proc = schedGetCurrentThread()->proc;
@@ -892,4 +981,82 @@ Process* procDup(Process *proc)
 {
 	__sync_add_and_fetch(&proc->refcount, 1);
 	return proc;
+};
+
+File* procFileGet(int fd)
+{
+	if (fd < 0 || fd >= PROC_MAX_OPEN_FILES)
+	{
+		return NULL;
+	};
+
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	File *fp = me->fileTable[fd].fp;
+	if (fp != NULL && fp != PROC_FILE_RESV) vfsDup(fp);
+
+	mutexUnlock(&me->fileTableLock);
+
+	if (fp == PROC_FILE_RESV) return NULL;
+	else return fp;
+};
+
+int procFileResv()
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		FileTableEntry *ent = &me->fileTable[fd];
+		if (ent->fp == NULL)
+		{
+			ent->fp = PROC_FILE_RESV;
+			break;
+		};
+	};
+
+	mutexUnlock(&me->fileTableLock);
+
+	if (fd == PROC_MAX_OPEN_FILES) return -1;
+	else return fd;
+};
+
+void procFileSet(int fd, File *fp, int cloexec)
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+	
+	FileTableEntry *ent = &me->fileTable[fd];
+	if (ent->fp != PROC_FILE_RESV)
+	{
+		panic("procFileSet() called on a non-reserved descriptor! This is an internal bug!");
+	};
+
+	ent->fp = vfsDup(fp);
+	ent->cloexec = cloexec;
+	
+	mutexUnlock(&me->fileTableLock);
+};
+
+int procFileClose(int fd)
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	FileTableEntry *ent = &me->fileTable[fd];
+	File *old = ent->fp;
+
+	ent->fp = NULL;
+	ent->cloexec = 0;
+	mutexUnlock(&me->fileTableLock);
+
+	if (old == NULL)
+	{
+		return -EBADF;
+	};
+
+	return 0;
 };

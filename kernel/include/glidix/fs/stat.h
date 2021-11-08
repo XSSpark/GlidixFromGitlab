@@ -96,6 +96,11 @@
 #define	O_ALL						(O_RDWR | O_APPEND | O_CREAT | O_EXCL | O_TRUNC | O_NOCTTY | O_NONBLOCK | O_CLOEXEC)
 #endif
 
+/**
+ * File descriptor referring to the current working directory.
+ */
+#define	VFS_AT_FDCWD					0xFFFF
+
 typedef struct
 {
 	uint16_t			ace_id;

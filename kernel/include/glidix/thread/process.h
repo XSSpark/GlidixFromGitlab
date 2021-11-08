@@ -55,6 +55,21 @@
 #define	PROC_USER_ADDR_MAX					(1UL << 44)
 
 /**
+ * Maximum number of open file descriptors allowed in a process.
+ */
+#define	PROC_MAX_OPEN_FILES					256
+
+/**
+ * Maximum size of user strings.
+ */
+#define	PROC_USER_STRING_SIZE					0x2000
+
+/**
+ * "Reserved" file pointer.
+ */
+#define	PROC_FILE_RESV						((File*)1)
+
+/**
  * Protection settings.
  */
 #ifndef PROT_READ
@@ -147,6 +162,22 @@ typedef struct
 	 */
 	int mflags;
 } ProcessMapping;
+
+/**
+ * Entry in the file table.
+ */
+typedef struct
+{
+	/**
+	 * The file description, or NULL if there isn't one here.
+	 */
+	File *fp;
+
+	/**
+	 * If nonzero, close this file on exec.
+	 */
+	int cloexec;
+} FileTableEntry;
 
 /**
  * Represents a process (a collection of userspace threads sharing a single address space).
@@ -244,6 +275,16 @@ struct Process_
 	 * Number of threads running.
 	 */
 	int numThreads;
+
+	/**
+	 * Mutex protecting the file table.
+	 */
+	Mutex fileTableLock;
+
+	/**
+	 * The file table.
+	 */
+	FileTableEntry fileTable[PROC_MAX_OPEN_FILES];
 };
 
 /**
@@ -339,6 +380,14 @@ int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo);
 int procToKernelCopy(void *ptr, user_addr_t addr, size_t size);
 
 /**
+ * Copy into kernel memory, from userspace address `addr`, a string. `buffer` must be of size `PROC_USER_STRING_SIZE`.
+ * Returns 0 on success (and `buffer` is filled with a valid string ending in NUL), or a negated error number
+ * if the read was not possible. Returns `-EFAULT` if an invalid memory access would have happened, `-EOVERFLOW`
+ * if the string is too long.
+ */
+int procReadUserString(char *buffer, user_addr_t addr);
+
+/**
  * Copy into user memory, from the kernel pointer. Returns 0 on success, or a negated error number (probably
  * `-EFAULT`) if the copy was not possible.
  */
@@ -354,5 +403,28 @@ Process* procByPID(pid_t pid);
  * Increment the reference count of the process, and return it again.
  */
 Process* procDup(Process *proc);
+
+/**
+ * Get the file description with the specified descriptor. The reference count will be incremented, so you must
+ * call `vfsClose()` on the descriptor later. Returns NULL if the descriptor is not valid.
+ */
+File* procFileGet(int fd);
+
+/**
+ * Reserve a file descriptor and return it. Returns -1 if there are no free descriptors. Call `procFileSet()` and
+ * set the descriptor to either a valid description or NULL later.
+ */
+int procFileResv();
+
+/**
+ * Set the value of a file descriptor previously reserved with `procFileResv()`. `fp` must either be a valid file
+ * description, or NULL. This function takes its own reference to `fp`.
+ */
+void procFileSet(int fd, File *fp, int cloexec);
+
+/**
+ * Close a file descriptor. Returns 0 on success, or a negated error number on error.
+ */
+int procFileClose(int fd);
 
 #endif

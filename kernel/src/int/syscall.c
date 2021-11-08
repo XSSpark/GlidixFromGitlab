@@ -32,6 +32,7 @@
 #include <glidix/int/exit.h>
 #include <glidix/util/string.h>
 #include <glidix/int/procops.h>
+#include <glidix/int/fileops.h>
 
 /**
  * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
@@ -43,6 +44,8 @@ void* _sysCallTable[] = {
 	sys_sigaction,							// 1
 	sys_sigmask,							// 2
 	sys_fork,							// 3
+	sys_openat,							// 4
+	sys_close,							// 5
 };
 
 /**
