@@ -46,6 +46,10 @@ void* _sysCallTable[] = {
 	sys_fork,							// 3
 	sys_openat,							// 4
 	sys_close,							// 5
+	sys_read,							// 6
+	sys_write,							// 7
+	sys_pread,							// 8
+	sys_pwrite,							// 9
 };
 
 /**

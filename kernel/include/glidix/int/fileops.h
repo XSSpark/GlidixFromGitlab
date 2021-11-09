@@ -33,6 +33,11 @@
 #include <glidix/thread/process.h>
 
 /**
+ * Maximum size of I/O buffers.
+ */
+#define	SYS_FILEOP_BUFFER_MAX						0x7ffff000
+
+/**
  * Implements the `openat()` system call.
  */
 int sys_openat(int dirfd, user_addr_t upath, int oflags, mode_t mode);
@@ -41,5 +46,25 @@ int sys_openat(int dirfd, user_addr_t upath, int oflags, mode_t mode);
  * Implements the `close()` system call.
  */
 int sys_close(int fd);
+
+/**
+ * Implements the `read()` system call.
+ */
+ssize_t sys_read(int fd, user_addr_t ubuffer, size_t size);
+
+/**
+ * Implements the `write()` system call.
+ */
+ssize_t sys_write(int fd, user_addr_t ubuffer, size_t size);
+
+/**
+ * Implements the `pread()` system call.
+ */
+ssize_t sys_pread(int fd, user_addr_t ubuffer, size_t size, off_t offset);
+
+/**
+ * Implements the `pwrite()` system call.
+ */
+ssize_t sys_pwrite(int fd, user_addr_t ubuffer, size_t size, off_t offset);
 
 #endif

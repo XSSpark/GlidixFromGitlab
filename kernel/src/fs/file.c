@@ -83,7 +83,7 @@ ssize_t vfsPRead(File *fp, void *buffer, size_t size, off_t pos)
 	if ((fp->oflags & O_RDONLY) == 0)
 	{
 		// not open for reading
-		return -EPERM;
+		return -EBADF;
 	};
 
 	return vfsInodeRead(fp->walker.current, buffer, size, pos);
@@ -94,7 +94,7 @@ ssize_t vfsPWrite(File *fp, const void *buffer, size_t size, off_t pos)
 	if ((fp->oflags & O_WRONLY) == 0)
 	{
 		// not open for writing
-		return -EPERM;
+		return -EBADF;
 	};
 
 	return vfsInodeWrite(fp->walker.current, buffer, size, pos);
@@ -112,7 +112,7 @@ ssize_t vfsRead(File *fp, void *buffer, size_t size)
 	if ((fp->oflags & O_RDONLY) == 0)
 	{
 		// not open for reading
-		return -EPERM;
+		return -EBADF;
 	};
 
 	mutexLock(&fp->posLock);
@@ -137,7 +137,7 @@ ssize_t vfsWrite(File *fp, const void *buffer, size_t size)
 	if ((fp->oflags & O_WRONLY) == 0)
 	{
 		// not open for writing
-		return -EPERM;
+		return -EBADF;
 	};
 
 	mutexLock(&fp->posLock);

@@ -29,6 +29,7 @@
 #include <glidix/int/fileops.h>
 #include <glidix/fs/file.h>
 #include <glidix/thread/process.h>
+#include <glidix/util/memory.h>
 
 int sys_openat(int dirfd, user_addr_t upath, int oflags, mode_t mode)
 {
@@ -80,4 +81,132 @@ int sys_openat(int dirfd, user_addr_t upath, int oflags, mode_t mode)
 int sys_close(int fd)
 {
 	return procFileClose(fd);
+};
+
+ssize_t sys_read(int fd, user_addr_t ubuffer, size_t size)
+{
+	if (size > SYS_FILEOP_BUFFER_MAX) size = SYS_FILEOP_BUFFER_MAX;
+	void *buffer = kmalloc(size);
+
+	if (buffer == NULL)
+	{
+		return -ENOMEM;
+	};
+
+	File *fp = procFileGet(fd);
+	if (fp == NULL)
+	{
+		kfree(buffer);
+		return -EBADF;
+	};
+
+	ssize_t result = vfsRead(fp, buffer, size);
+	if (result > 0)
+	{
+		int status = procToUserCopy(ubuffer, buffer, result);
+		if (status != 0)
+		{
+			kfree(buffer);
+			return -status;
+		};
+	};
+
+	kfree(buffer);
+	vfsClose(fp);
+	return result;
+};
+
+ssize_t sys_write(int fd, user_addr_t ubuffer, size_t size)
+{
+	if (size > SYS_FILEOP_BUFFER_MAX) size = SYS_FILEOP_BUFFER_MAX;
+	void *buffer = kmalloc(size);
+
+	if (buffer == NULL)
+	{
+		return -ENOMEM;
+	};
+
+	int status = procToKernelCopy(buffer, ubuffer, size);
+	if (status != 0)
+	{
+		kfree(buffer);
+		return status;
+	};
+
+	File *fp = procFileGet(fd);
+	if (fp == NULL)
+	{
+		kfree(buffer);
+		return -EBADF;
+	};
+
+	ssize_t result = vfsWrite(fp, buffer, size);
+	kfree(buffer);
+	vfsClose(fp);
+
+	return result;
+};
+
+ssize_t sys_pread(int fd, user_addr_t ubuffer, size_t size, off_t offset)
+{
+	if (size > SYS_FILEOP_BUFFER_MAX) size = SYS_FILEOP_BUFFER_MAX;
+	void *buffer = kmalloc(size);
+
+	if (buffer == NULL)
+	{
+		return -ENOMEM;
+	};
+
+	File *fp = procFileGet(fd);
+	if (fp == NULL)
+	{
+		kfree(buffer);
+		return -EBADF;
+	};
+
+	ssize_t result = vfsPRead(fp, buffer, size, offset);
+	if (result > 0)
+	{
+		int status = procToUserCopy(ubuffer, buffer, result);
+		if (status != 0)
+		{
+			kfree(buffer);
+			return -status;
+		};
+	};
+
+	kfree(buffer);
+	vfsClose(fp);
+	return result;
+};
+
+ssize_t sys_pwrite(int fd, user_addr_t ubuffer, size_t size, off_t offset)
+{
+	if (size > SYS_FILEOP_BUFFER_MAX) size = SYS_FILEOP_BUFFER_MAX;
+	void *buffer = kmalloc(size);
+
+	if (buffer == NULL)
+	{
+		return -ENOMEM;
+	};
+
+	int status = procToKernelCopy(buffer, ubuffer, size);
+	if (status != 0)
+	{
+		kfree(buffer);
+		return status;
+	};
+
+	File *fp = procFileGet(fd);
+	if (fp == NULL)
+	{
+		kfree(buffer);
+		return -EBADF;
+	};
+
+	ssize_t result = vfsPWrite(fp, buffer, size, offset);
+	kfree(buffer);
+	vfsClose(fp);
+
+	return result;
 };
