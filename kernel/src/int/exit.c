@@ -28,8 +28,9 @@
 
 #include <glidix/int/exit.h>
 #include <glidix/util/panic.h>
+#include <glidix/thread/process.h>
 
 int sys_exit(int status)
 {
-	panic("Called sys_exit() with status %d!", status);
+	procExit(PROC_WS_EXIT(status));
 };

@@ -74,3 +74,25 @@ pid_t sys_getpid()
 {
 	return schedGetCurrentThread()->proc->pid;
 };
+
+pid_t sys_getppid()
+{
+	return schedGetCurrentThread()->proc->parent;
+};
+
+pid_t sys_waitpid(pid_t pid, user_addr_t uwstatus, int flags)
+{
+	int wstatus;
+	pid_t result = procWait(pid, &wstatus, flags);
+
+	if (result > 0 && uwstatus != 0)
+	{
+		int status = procToUserCopy(uwstatus, &wstatus, sizeof(int));
+		if (status != 0)
+		{
+			return status;
+		};
+	};
+
+	return result;
+};

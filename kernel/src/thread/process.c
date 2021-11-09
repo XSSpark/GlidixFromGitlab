@@ -95,7 +95,7 @@ static void _procUnrefMappingWalk(TreeMap *treemap, uint32_t index, void *value_
 
 static void procDeletePageTableRecur(void *ptr, int depth)
 {
-	if (depth == 3)
+	if (depth == 4)
 	{
 		// `ptr` actually points to a user page
 		komUserPageUnref(ptr);
@@ -104,12 +104,14 @@ static void procDeletePageTableRecur(void *ptr, int depth)
 	{
 		uint64_t *table = (uint64_t*) ptr;
 		int i;
-		for (i=0; i<512; i++)
+		int limit = depth == 0 ? 256 : 512;
+		for (i=0; i<limit; i++)
 		{
 			uint64_t ent = table[i];
 			if (ent & PT_PRESENT)
 			{
 				void *sub = komPhysToVirt(ent & PT_PHYS_MASK);
+				ASSERT(sub != NULL);
 				procDeletePageTableRecur(sub, depth+1);
 			};
 		};
@@ -139,6 +141,14 @@ void procUnref(Process *proc)
 		treemapDestroy(proc->mappingTree);
 		vfsPathWalkerDestroy(&proc->rootDir);
 		vfsPathWalkerDestroy(&proc->currentDir);
+
+		int fd;
+		for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+		{
+			File *fp = proc->fileTable[fd].fp;
+			if (fp != NULL) vfsClose(fp);
+		};
+
 		kfree(proc);
 	};
 };
@@ -680,10 +690,13 @@ void procBeginExec()
 {
 	Process *proc = schedGetCurrentThread()->proc;
 
+	if (proc->numThreads != 1)
+	{
+		panic("TODO: i don't know how to kill other threads yet!");
+	};
+
 	// reset signal dispositions
 	schedResetSigActions();
-
-	// TODO: kill the other threads in this process
 
 	// close all cloexec files
 	mutexLock(&proc->fileTableLock);
@@ -1061,4 +1074,168 @@ int procFileClose(int fd)
 	};
 
 	return 0;
+};
+
+/**
+ * This is called from `procExit()` to walk through the process table, `context_` being the process
+ * exiting, and any process who has the exiting process as a parent, will have the parent PID set to
+ * 1 (init).
+ */
+static void _procOrphaneChildrenCallback(TreeMap *tm, uint32_t index, void *value_, void *context_)
+{
+	Process *parent = (Process*) context_;
+	Process *child = (Process*) value_;
+
+	if (child->parent == parent->pid)
+	{
+		child->parent = 1;
+	};
+};
+
+noreturn void procExit(int wstatus)
+{
+	Thread *thread = schedGetCurrentThread();
+	Process *proc = thread->proc;
+
+	if (proc->pid == 1)
+	{
+		panic("The init process attempted to exit!");
+	};
+
+	if (proc->numThreads > 1)
+	{
+		panic("TODO: i don't know how to kill other threads yet!");
+	};
+
+	// close all file descriptors
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		procFileClose(fd);
+	};
+
+	// remove the calling thread (us) from the process' thread table
+	treemapSet(proc->threads, thread->thid, NULL);
+
+	// detach us from the process, and ensure that we don't continue using the page table
+	cli();
+	thread->proc = NULL;
+	pagetabSetCR3(cpuGetCurrent()->kernelCR3);
+	sti();
+
+	// with the process table lock held, orphane the children and inform the parent about us
+	mutexLock(&procTableLock);
+	proc->wstatus = wstatus;
+	proc->terminated = 1;
+	treemapWalk(procTable, _procOrphaneChildrenCallback, proc);
+	Process *parent = (Process*) treemapGet(procTable, proc->parent);
+	ASSERT(parent != NULL);
+
+	// if the parent explicitly ignores SIGCHLD or has set SA_NOCLDWAIT on its signal
+	// disposition, we inform init (pid 1) instead
+	SigAction *sigchldAction = &parent->sigActions[SIGCHLD];
+	if (sigchldAction->sa_sigaction_handler == SIG_IGN || sigchldAction->sa_flags & SA_NOCLDWAIT)
+	{
+		parent = treemapGet(procTable, 1);
+		ASSERT(parent != NULL);
+	};
+
+	if (parent->childWaiter != NULL) schedWake(parent->childWaiter);
+	mutexUnlock(&procTableLock);
+
+	// TODO: also send SIGCHLD to parent
+
+	// exit from this thread
+	schedDetachKernelThread(thread);
+	schedExitThread();
+};
+
+static void _procWaitWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	ProcWaitContext *ctx = (ProcWaitContext*) context_;
+
+	if (ctx->result > 0)
+	{
+		return;
+	};
+
+	if (proc->parent == ctx->parent)
+	{
+		if (proc->pid == ctx->pid || ctx->pid == -1)
+		{
+			if (ctx->result == -ECHILD)
+			{
+				ctx->result = 0;
+			};
+
+			if (proc->terminated)
+			{
+				ctx->wstatus = proc->wstatus;
+				ctx->result = proc->pid;
+				ctx->child = proc;
+				treemapSet(tm, proc->pid, NULL);
+			};
+		};
+	};
+};
+
+pid_t procWait(pid_t pid, int *wstatus, int flags)
+{
+	if ((flags & PROC_WALL) != flags)
+	{
+		// invalid flags were set
+		return -EINVAL;
+	};
+
+	Thread *thread = schedGetCurrentThread();
+	Process *proc = thread->proc;
+
+	ProcWaitContext ctx;
+	ctx.pid = pid;
+	ctx.parent = proc->pid;
+	ctx.child = NULL;
+	ctx.wstatus = 0;
+
+	mutexLock(&procTableLock);
+	while (1)
+	{
+		if (proc->childWaiter == NULL)
+		{
+			proc->childWaiter = thread;
+		};
+
+		ctx.result = -ECHILD;
+		treemapWalk(procTable, _procWaitWalkCallback, &ctx);
+		
+		if (ctx.result != 0)
+		{
+			break;
+		};
+
+		if (flags & PROC_WNOHANG)
+		{
+			break;
+		};
+
+		mutexUnlock(&procTableLock);
+		schedSuspend();
+
+		mutexLock(&procTableLock);
+		if (schedHaveReadySigs())
+		{
+			ctx.result = -EINTR;
+			break;
+		};
+	};
+
+	if (proc->childWaiter == thread)
+	{
+		proc->childWaiter = NULL;
+	};
+
+	mutexUnlock(&procTableLock);
+	if (ctx.child != NULL) procUnref(ctx.child);
+	if (wstatus != NULL) *wstatus = ctx.wstatus;
+	return ctx.result;
 };

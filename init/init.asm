@@ -5,22 +5,27 @@ section .text
 
 global _start
 _start:
-	mov rax, 4				; sys_open
-	mov rdi, 0xFFFF				; AT_FDCWD
-	mov rsi, filename
-	mov rdx, 3				; O_RDWR
+	mov rax, 3				; sys_fork
 	syscall
 
-	mov rdi, rax				; fd into RDI
-	mov rax, 7				; sys_write
-	mov rsi, hello
-	mov rdx, 5
+	test rax, rax
+	jz _child
+
+	mov rdi, rax				; PID into RDI
+	mov rax, 12				; sys_waitpid
+	mov rsi, status				; &status
+	xor rdx, rdx				; flags = 0
 	syscall
 
+	mov ecx, [status]
+	xchg bx, bx
 	jmp $
 
-filename:
-	db '/initrd-console', 0
+_child:
+	xor rax, rax				; sys_exit
+	mov rdi, 0x23
+	syscall
 
-hello:
-	db 'hello'
+section .data
+status:
+	dd 0

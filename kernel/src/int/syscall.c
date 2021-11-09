@@ -51,6 +51,8 @@ void* _sysCallTable[] = {
 	sys_pread,							// 8
 	sys_pwrite,							// 9
 	sys_getpid,							// 10
+	sys_getppid,							// 11
+	sys_waitpid,							// 12
 };
 
 /**

@@ -30,6 +30,7 @@
 #define	__glidix_int_procops_h
 
 #include <glidix/util/common.h>
+#include <glidix/thread/process.h>
 
 /**
  * Fork the current process. Returns 0 to the child, the child's (positive) PID to the
@@ -42,5 +43,15 @@ pid_t sys_fork();
  * Get the PID of the calling process.
  */
 pid_t sys_getpid();
+
+/**
+ * Get the parent process ID.
+ */
+pid_t sys_getppid();
+
+/**
+ * Wait for a child to terminate (implements the `waitpid()` syscall).
+ */
+pid_t sys_waitpid(pid_t pid, user_addr_t uwstatus, int flags);
 
 #endif

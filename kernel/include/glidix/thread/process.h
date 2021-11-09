@@ -34,6 +34,7 @@
 #include <glidix/fs/path.h>
 #include <glidix/fs/file.h>
 #include <glidix/int/signal.h>
+#include <glidix/thread/semaphore.h>
 
 /**
  * The kernel init action for initialising the process table and starting `init`.
@@ -68,6 +69,22 @@
  * "Reserved" file pointer.
  */
 #define	PROC_FILE_RESV						((File*)1)
+
+/**
+ * For manipulating the 'waitstatus' value.
+ */
+#define	PROC_WS_EXIT(ret)					(((ret) & 0xFF) << 8)	/* normal exit with status 'ret' */
+#define	PROC_WS_SIG(sig)					(sig)			/* terminated by signal 'sig' */
+#define	PROC_WS_CORE						(1 << 7)		/* bitwise-OR to set "core dumped" */
+
+/**
+ * Process wait flags.
+ */
+#define	PROC_WNOHANG						(1 << 0)
+#define	PROC_WDETACH						(1 << 1)
+#define	PROC_WUNTRACED						(1 << 2)
+#define	PROC_WCONTINUED						(1 << 3)
+#define	PROC_WALL						((1 << 4)-1)
 
 /**
  * Protection settings.
@@ -205,7 +222,8 @@ struct Process_
 	Mutex mapLock;
 
 	/**
-	 * Parent process ID.
+	 * Parent process ID. Note that this may change to 1 once the parent terminates. The
+	 * change is protected by `procTableLock`.
 	 */
 	pid_t parent;
 
@@ -285,7 +303,56 @@ struct Process_
 	 * The file table.
 	 */
 	FileTableEntry fileTable[PROC_MAX_OPEN_FILES];
+
+	/**
+	 * Process wait status.
+	 */
+	int wstatus;
+
+	/**
+	 * Set to 1 once the process terminates.
+	 */
+	int terminated;
+
+	/**
+	 * The thread currently blocking in `waitpid()`. This is protected by the
+	 * process table lock.
+	 */
+	Thread *childWaiter;
 };
+
+/**
+ * Context of child reaping.
+ */
+typedef struct
+{
+	/**
+	 * The `pid` passed to `waitpid`.
+	 */
+	pid_t pid;
+
+	/**
+	 * Result. This is initialised to `-ECHILD`. If a child is found but not yet
+	 * terminated, this gets set to 0. If a child is reaped, this is set to its
+	 * PID.
+	 */
+	pid_t result;
+
+	/**
+	 * The parent pid (i.e. the process looking for children).
+	 */
+	pid_t parent;
+
+	/**
+	 * Wait status to return.
+	 */
+	int wstatus;
+
+	/**
+	 * The child (must be unreffered if found).
+	 */
+	Process *child;
+} ProcWaitContext;
 
 /**
  * Context of page cloning.
@@ -426,5 +493,16 @@ void procFileSet(int fd, File *fp, int cloexec);
  * Close a file descriptor. Returns 0 on success, or a negated error number on error.
  */
 int procFileClose(int fd);
+
+/**
+ * Exit the current process with the specified waitstatus. Use `PROC_WS_*()` macros to form the wait status.
+ */
+noreturn void procExit(int wstatus);
+
+/**
+ * Wait for a child process to terminate, and returns its PID. If `wstatus` is not NULL, then the child's wait
+ * status is stored there on success. On error, a negated error number is returned.
+ */
+pid_t procWait(pid_t pid, int *wstatus, int flags);
 
 #endif
