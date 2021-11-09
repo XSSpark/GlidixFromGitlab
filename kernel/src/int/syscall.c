@@ -50,6 +50,7 @@ void* _sysCallTable[] = {
 	sys_write,							// 7
 	sys_pread,							// 8
 	sys_pwrite,							// 9
+	sys_getpid,							// 10
 };
 
 /**

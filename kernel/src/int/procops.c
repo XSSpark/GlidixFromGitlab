@@ -69,3 +69,8 @@ pid_t sys_fork()
 
 	return pid;
 };
+
+pid_t sys_getpid()
+{
+	return schedGetCurrentThread()->proc->pid;
+};

@@ -38,4 +38,9 @@
  */
 pid_t sys_fork();
 
+/**
+ * Get the PID of the calling process.
+ */
+pid_t sys_getpid();
+
 #endif
