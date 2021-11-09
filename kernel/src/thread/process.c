@@ -683,6 +683,8 @@ void procBeginExec()
 	// reset signal dispositions
 	schedResetSigActions();
 
+	// TODO: kill the other threads in this process
+
 	// close all cloexec files
 	mutexLock(&proc->fileTableLock);
 	int fd;
