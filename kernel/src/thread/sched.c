@@ -252,7 +252,7 @@ noreturn void _schedNext(void *stack)
 			}
 			else
 			{
-				pagetabGetCR3(cpu->kernelCR3);
+				pagetabSetCR3(cpu->kernelCR3);
 			};
 			
 			// set the FSBASE
@@ -434,7 +434,7 @@ void schedDetachKernelThread(Thread *thread)
 		if (schedDetHead != NULL) schedDetHead->detPrev = thread;
 		schedDetHead = thread;
 		
-		// ensure the cleanup that is woken up when this exits
+		// ensure the cleanup thread is woken up when this exits
 		thread->joiner = schedGlobalCleanupThread;
 		spinlockRelease(&schedLock, irqState);
 	};
