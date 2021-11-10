@@ -8,6 +8,7 @@ extern main
 global _start
 global openat
 global write
+global dup3
 
 _start:
 	call main
@@ -23,5 +24,10 @@ openat:
 
 write:
 	mov rax, 7
+	syscall
+	ret
+
+dup3:
+	mov rax, 18
 	syscall
 	ret

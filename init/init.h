@@ -29,5 +29,6 @@ typedef int64_t ssize_t;
 
 int openat(int dirfd, const char *path, int oflags, ...);
 ssize_t write(int fd, const void *buffer, size_t size);
+int dup3(int oldfd, int newfd, int cloexec);
 
 #endif

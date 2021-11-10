@@ -58,6 +58,7 @@ void* _sysCallTable[] = {
 	sys_setpgid,							// 15
 	sys_getpgrp,							// 16
 	sys_kill,							// 17
+	sys_dup3,							// 18
 };
 
 /**

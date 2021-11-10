@@ -67,4 +67,19 @@ ssize_t sys_pread(int fd, user_addr_t ubuffer, size_t size, off_t offset);
  */
 ssize_t sys_pwrite(int fd, user_addr_t ubuffer, size_t size, off_t offset);
 
+/**
+ * Implements the `dup3()` system call (which is used to implement `dup()` and `dup2()`).
+ * 
+ * This is subtly different from the Linux `dup3()`. If `newfd` is -1, then a new file descriptor is allocated,
+ * set to point to the same open file description as `oldfd`, and returned. If `newfd` is not -1, it must be a
+ * file descriptor within the valid range; if the descriptor is in use, it will be closed and replaced with the
+ * description of `oldfd`.
+ * 
+ * If `cloexec` is nonzero, then `newfd` will be automatically closed after a successful `exec*()`.
+ * 
+ * Returns the new (positive) file descriptor on success, or a negated error number on error. If `oldfd` and
+ * `newfd` are the same value, returns `-EINVAL`.
+ */
+int sys_dup3(int oldfd, int newfd, int cloexec);
+
 #endif

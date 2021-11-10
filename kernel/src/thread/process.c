@@ -1052,6 +1052,35 @@ void procFileSet(int fd, File *fp, int cloexec)
 	mutexUnlock(&me->fileTableLock);
 };
 
+int procFileDupInto(int newfd, File *fp, int cloexec)
+{
+	if (newfd < 0 || newfd >= PROC_MAX_OPEN_FILES)
+	{
+		return -EBADF;
+	};
+
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	FileTableEntry *ent = &me->fileTable[newfd];
+	if (ent->fp == PROC_FILE_RESV)
+	{
+		mutexUnlock(&me->fileTableLock);
+		return -EBUSY;
+	};
+
+	if (ent->fp != NULL)
+	{
+		vfsClose(ent->fp);
+	};
+
+	ent->fp = vfsDup(fp);
+	ent->cloexec = cloexec;
+
+	mutexUnlock(&me->fileTableLock);
+	return newfd;
+};
+
 int procFileClose(int fd)
 {
 	Process *me = schedGetCurrentThread()->proc;

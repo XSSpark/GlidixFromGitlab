@@ -539,9 +539,16 @@ int procFileResv();
 
 /**
  * Set the value of a file descriptor previously reserved with `procFileResv()`. `fp` must either be a valid file
- * description, or NULL. This function takes its own reference to `fp`.
+ * description, or NULL. This function takes its own reference to `fp`. If `fd` currently
  */
 void procFileSet(int fd, File *fp, int cloexec);
+
+/**
+ * Duplicate the file description into descriptor `newfd`. Returns `newfd` on success, or a negated error number on error.
+ * If `newfd` already refers to a file, that file is closed (unrefed). This function takes its own reference to `fp`,
+ * if successful.
+ */
+int procFileDupInto(int newfd, File *fp, int cloexec);
 
 /**
  * Close a file descriptor. Returns 0 on success, or a negated error number on error.

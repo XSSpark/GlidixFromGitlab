@@ -4,9 +4,6 @@
 
 #include "init.h"
 
-// console file descriptor
-static int conFD;
-
 size_t strlen(const char *s)
 {
 	size_t result = 0;
@@ -21,19 +18,29 @@ size_t strlen(const char *s)
 
 void println(const char *line)
 {
-	write(conFD, line, strlen(line));
-	write(conFD, "\n", 1);
+	write(1, line, strlen(line));
+	write(1, "\n", 1);
 };
 
 int main()
 {
-	conFD = openat(AT_FDCWD, "/initrd-console", O_RDWR);
-	if (conFD < 0)
+	int fd = openat(AT_FDCWD, "/initrd-console", O_RDWR);
+	if (fd != 0)
 	{
 		return 1;
 	};
 
-	println("Hello world from userspace init!");
+	if (dup3(0, 1, 0) != 1)
+	{
+		return 2;
+	};
+
+	if (dup3(1, 2, 0) != 2)
+	{
+		return 3;
+	};
+
+	println("I'm printing this via the duplicated descriptor!");
 
 	return 0;
 };

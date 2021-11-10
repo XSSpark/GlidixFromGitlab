@@ -210,3 +210,36 @@ ssize_t sys_pwrite(int fd, user_addr_t ubuffer, size_t size, off_t offset)
 
 	return result;
 };
+
+int sys_dup3(int oldfd, int newfd, int cloexec)
+{
+	if (oldfd == newfd)
+	{
+		return -EINVAL;
+	};
+	
+	File *fp = procFileGet(oldfd);
+	if (fp == NULL)
+	{
+		return -EBADF;
+	};
+
+	if (newfd == -1)
+	{
+		newfd = procFileResv();
+		if (newfd < 0)
+		{
+			vfsClose(fp);
+			return -EMFILE;
+		};
+
+		procFileSet(newfd, fp, cloexec);
+	}
+	else
+	{
+		newfd = procFileDupInto(newfd, fp, cloexec);
+	};
+
+	vfsClose(fp);
+	return newfd;
+};
