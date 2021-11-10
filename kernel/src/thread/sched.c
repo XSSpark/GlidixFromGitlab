@@ -608,6 +608,11 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		// ignore
 		return;
 	}
+	else if (handler < 256 && schedGetCurrentThread()->proc->pid == 1)
+	{
+		// ignore any signals for init that it doesn't explicitly handle
+		return;
+	}
 	else if (handler == SIG_TERM || handler == SIG_CORE)
 	{
 		panic("TODO: implement terminating");
