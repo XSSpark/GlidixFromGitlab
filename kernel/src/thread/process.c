@@ -1364,3 +1364,53 @@ int procSetProcessGroup(pid_t pid, pid_t pgid)
 
 	return 0;
 };
+
+static void _procKillWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	KillWalkContext *ctx = (KillWalkContext*) context_;
+	Process *me = schedGetCurrentThread()->proc;
+
+	if (proc->pid == ctx->pid || ctx->pid == -1 || proc->pgid == -ctx->pid
+		|| (ctx->pid == 0 && proc->pgid == me->pgid))
+	{
+		int permitted = me->euid == 0 || me->ruid == 0 || me->ruid == proc->ruid || me->euid == proc->ruid;
+		if (ctx->status == -ESRCH)
+		{
+			ctx->status = permitted ? 0 : -EPERM;
+		};
+
+		if (permitted)
+		{
+			ksiginfo_t si;
+			memset(&si, 0, sizeof(ksiginfo_t));
+
+			si.si_signo = ctx->signo;
+			si.si_code = SI_USER;
+			si.si_pid = me->pid;
+			si.si_uid = me->ruid;
+
+			schedDeliverSignalToProc(proc, &si);
+		};
+	};
+};
+
+int procKill(pid_t pid, int signo)
+{
+	if (signo < 1 || signo >= SIG_NUM)
+	{
+		return -EINVAL;
+	};
+
+	mutexLock(&procTableLock);
+
+	KillWalkContext ctx;
+	ctx.pid = pid;
+	ctx.signo = signo;
+	ctx.status = -ESRCH;
+
+	treemapWalk(procTable, _procKillWalkCallback, &ctx);
+
+	mutexUnlock(&procTableLock);
+	return ctx.status;
+};

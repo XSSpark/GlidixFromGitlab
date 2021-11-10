@@ -412,6 +412,29 @@ typedef struct
 } ProcessGroupSessionWalkContext;
 
 /**
+ * Walk context for `procKill()`.
+ */
+typedef struct
+{
+	/**
+	 * The PID specified in the kill.
+	 */
+	pid_t pid;
+
+	/**
+	 * The signal to send.
+	 */
+	int signo;
+
+	/**
+	 * The status. Initially this is set to `-ESRCH`. If any target process is found,
+	 * but permission was not granted, then this gets set to `-EPERM`. If a signal is
+	 * delivered, this is set to 0.
+	 */
+	int status;
+} KillWalkContext;
+
+/**
  * Create a new process.
  * 
  * The new process inherits the majority of the calling process' information, such as root dir,
@@ -553,5 +576,10 @@ int procSetSessionID();
  * the same session as the target process. Returns 0 on success, or a negated error number on error.
  */
 int procSetProcessGroup(pid_t pid, pid_t pgid);
+
+/**
+ * Send a signal to a process or processes. Returns 0 on success, or a negated error number on error.
+ */
+int procKill(pid_t pid, int signo);
 
 #endif

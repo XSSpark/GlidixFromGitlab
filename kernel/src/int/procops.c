@@ -116,3 +116,8 @@ pid_t sys_getpgrp()
 {
 	return schedGetCurrentThread()->proc->pgid;
 };
+
+int sys_kill(pid_t pid, int signo)
+{
+	return procKill(pid, signo);
+};

@@ -530,7 +530,7 @@ void schedSetFSBase(uint64_t fsbase)
 
 int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
 {
-	if (signum < 1 || signum >= SIG_NUM || signum == SIGKILL || signum == SIGSTOP || signum == SIGTHKILL)
+	if (signum < 1 || signum >= SIG_NUM)
 	{
 		return -EINVAL;
 	};
@@ -543,7 +543,7 @@ int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
 		memcpy(oldact, &proc->sigActions[signum], sizeof(SigAction));
 	};
 
-	if (act != NULL)
+	if (act != NULL && signum != SIGKILL && signum != SIGSTOP && signum != SIGTHKILL)
 	{
 		memcpy(&proc->sigActions[signum], act, sizeof(SigAction));
 	};
@@ -615,7 +615,7 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 	}
 	else if (handler == SIG_TERM || handler == SIG_CORE)
 	{
-		panic("TODO: implement terminating");
+		procExit(PROC_WS_SIG(siginfo->si_signo));
 	}
 	else if (handler == SIG_STOP)
 	{
@@ -627,14 +627,14 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		user_addr_t gprAddr = gprs->rsp - sizeof(kmcontext_gpr_t) - 128;
 		if (procToUserCopy(gprAddr, gprs, sizeof(kmcontext_gpr_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// put the signal info on the stack
 		user_addr_t siginfoAddr = (gprAddr - sizeof(ksiginfo_t)) & ~0x7;
 		if (procToUserCopy(siginfoAddr, siginfo, sizeof(ksiginfo_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// now create the `ucontext_t`, ensuring it is 16-bytes-aligned (required for the
@@ -649,7 +649,7 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 
 		if (procToUserCopy(contextAddr, &ucontext, sizeof(kucontext_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// mask the signals specified by the action
@@ -660,7 +660,7 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		uint64_t retAddr = (uint64_t) (userAuxSigReturn);
 		if (procToUserCopy(rsp, &retAddr, 8) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// enter the handler

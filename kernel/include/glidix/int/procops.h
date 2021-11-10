@@ -74,4 +74,9 @@ int sys_setpgid(pid_t pid, pid_t pgid);
  */
 pid_t sys_getpgrp();
 
+/**
+ * Send a signal to a process or processes.
+ */
+int sys_kill(pid_t pid, int signo);
+
 #endif
