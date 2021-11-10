@@ -1102,7 +1102,7 @@ noreturn void procExit(int wstatus)
 
 	if (proc->pid == 1)
 	{
-		panic("The init process attempted to exit!");
+		panic("The init process attempted to exit, with wstatus=0x%x!", wstatus);
 	};
 
 	if (proc->numThreads > 1)

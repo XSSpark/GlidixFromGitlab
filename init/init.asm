@@ -1,23 +1,27 @@
 ; Currently this is just a demo application for testing,
-; read init will be put in this directory later
+; real init will be put in this directory later
 
 section .text
 
+extern main
+
 global _start
+global openat
+global write
+
 _start:
-
-	mov rax, 3				; sys_fork
+	call main
+	mov rdi, rax
+	xor rax, rax
 	syscall
 
-	test rax, rax
-	jz _child
-
-	mov rax, 17				; sys_kill
-	mov rdi, 2
-	mov rsi, 9
+openat:
+	mov rax, 4
+	mov r10, rcx
 	syscall
+	ret
 
-	jmp $
-	
-_child:
-	jmp $
+write:
+	mov rax, 7
+	syscall
+	ret
