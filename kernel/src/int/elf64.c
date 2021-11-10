@@ -31,6 +31,12 @@
 #include <glidix/util/log.h>
 #include <glidix/util/panic.h>
 #include <glidix/hw/fpu.h>
+#include <glidix/hw/pagetab.h>
+
+/**
+ * Zeroed-out page (for copying into the end of BSS before a page boundary).
+ */
+static char elfZeroPage[PAGE_SIZE];
 
 /**
  * Enter the userspace context. This is defined in elf64.asm. It will switch to userspace,
@@ -188,7 +194,7 @@ static int elfExecStatic(File *fp, ElfInfo *info, const char **argv, const char 
 		// start by mapping the whole memory-size region as anonymous
 		if (procMap(seg->vaddr, seg->memsz, seg->prot, MAP_ANON | MAP_FIXED | MAP_PRIVATE, NULL, 0, &err) != seg->vaddr)
 		{
-			panic("TODO: can't handle failure yet (mapping the memory part)");
+			procExit(PROC_WS_SIG(SIGILL));
 		};
 
 		// now map the file part of it
@@ -196,15 +202,23 @@ static int elfExecStatic(File *fp, ElfInfo *info, const char **argv, const char 
 		{
 			if (procMap(seg->vaddr, seg->filesz, seg->prot, MAP_FIXED | MAP_PRIVATE, fp, seg->offset, &err) != seg->vaddr)
 			{
-				panic("TODO: can't handle failure yet (mapping the file part)");
+				procExit(PROC_WS_SIG(SIGILL));
 			};
 		};
 
-		// TODO: we will need to zero out the end of a page if the file and memory size don't match, and the file
+		// we need to zero out the end of a page if the file and memory size don't match, and the file
 		// ends at somewhere other than a page boundary
 		if (seg->filesz != seg->memsz)
 		{
-			panic("can't handle BSS yet");
+			user_addr_t fileEnd = seg->vaddr + seg->filesz;
+			if (fileEnd & 0xFFF)
+			{
+				size_t toZero = PAGE_SIZE - (fileEnd & 0xFFF);
+				if (procToUserCopy(fileEnd, elfZeroPage, toZero) != 0)
+				{
+					procExit(PROC_WS_SIG(SIGILL));
+				};
+			};
 		};
 	};
 
@@ -212,7 +226,7 @@ static int elfExecStatic(File *fp, ElfInfo *info, const char **argv, const char 
 	if (procMap(ELF_USER_STACK_BASE, ELF_USER_STACK_SIZE,
 		PROT_READ | PROT_WRITE, MAP_ANON | MAP_FIXED | MAP_PRIVATE, NULL, 0, &err) != ELF_USER_STACK_BASE)
 	{
-		panic("TODO: can't handle failure yet (the stack)");
+		procExit(PROC_WS_SIG(SIGILL));
 	};
 
 	// initialize the stack
