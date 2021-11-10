@@ -37,6 +37,7 @@
 #include <glidix/util/log.h>
 #include <glidix/hw/idt.h>
 #include <glidix/hw/fpu.h>
+#include <glidix/thread/process.h>
 
 /**
  * In trampoline.asm: range of addresses where we have the real mode code for starting
@@ -419,10 +420,14 @@ void cpuProcessMessages()
 		{
 			ASM ("mov %%cr3, %%rax ; mov %%rax, %%cr3" : : : "%rax");
 		}
+		else if (msg->msgType == CPU_MSG_PROC_SIGNAL || msg->msgType == CPU_MSG_THREAD_SIGNAL)
+		{
+			// NOP; the signal will be handled upon entry to userspace
+		}
 		else
 		{
 			panic("CPU with APIC ID %hhu received invalid message type (%d)", cpu->apicID, msg->msgType);
-		}
+		};
 
 		msg->ack = 1;
 		__sync_synchronize();
@@ -430,4 +435,37 @@ void cpuProcessMessages()
 	};
 
 	spinlockRelease(&cpu->msgLock, irqState);
+};
+
+void cpuInformProcSignalled(Process *proc)
+{
+	CPU *me = cpuGetCurrent();
+
+	int i;
+	for (i=0; i<nextCPUIndex; i++)
+	{
+		CPU *cpu = &cpuList[i];
+		if (cpu->currentCR3 == proc->cr3 && cpu != me)
+		{
+			cpuSendMessage(i, CPU_MSG_PROC_SIGNAL, NULL);
+		};
+	};
+
+	procWakeThreads(proc);
+};
+
+void cpuInformThreadSignalled(Thread *thread)
+{
+	CPU *me = cpuGetCurrent();
+	schedWake(thread);
+
+	int i;
+	for (i=0; i<nextCPUIndex; i++)
+	{
+		CPU *cpu = &cpuList[i];
+		if (cpu->currentThread == thread && cpu != me)
+		{
+			cpuSendMessage(i, CPU_MSG_THREAD_SIGNAL, NULL);
+		};
+	};
 };

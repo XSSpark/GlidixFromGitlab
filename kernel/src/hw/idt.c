@@ -253,6 +253,8 @@ noreturn void idtReboot()
 
 static void isrDispatchSignal(Regs *regs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
 {
+	sti();
+	
 	kmcontext_gpr_t gprs;
 	gprs.rax = regs->rax;
 	gprs.rbx = regs->rbx;
@@ -367,10 +369,13 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	};
 
 	// check for signals
-	ksiginfo_t si;
-	if (schedCheckSignals(&si) == 0)
+	if ((regs->cs & 3) == 3)
 	{
-		isrDispatchSignal(regs, fpuregs, &si);
+		ksiginfo_t si;
+		if (schedCheckSignals(&si) == 0)
+		{
+			isrDispatchSignal(regs, fpuregs, &si);
+		};
 	};
 };
 

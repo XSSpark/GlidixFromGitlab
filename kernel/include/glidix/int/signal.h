@@ -73,6 +73,15 @@
 #define	SIGTHSUSP					38		/* suspend thread */
 
 /**
+ * Generic si_codes.
+ */
+#define	SI_USER						0
+#define	SI_QUEUE					1
+#define	SI_TIMER					2
+#define	SI_ASYNCIO					3
+#define	SI_MESGQ					4
+
+/**
  * si_code for SIGSEGV
  */
 #define	SEGV_MAPERR					0x1001
@@ -84,6 +93,16 @@
 #define	BUS_ADRALN					0x4001
 #define	BUS_ADRERR					0x4002
 #define	BUS_OBJERR					0x4003
+
+/**
+ * si_code for SIGCHLD
+ */
+#define	CLD_EXITED					0x2001
+#define	CLD_KILLED					0x2002
+#define	CLD_DUMPED					0x2003		/* never returned by glidix */
+#define	CLD_TRAPPED					0x2004
+#define	CLD_STOPPED					0x2005
+#define	CLD_CONTINUED					0x2006
 
 /**
  * sigaction sa_flags

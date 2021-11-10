@@ -505,4 +505,9 @@ noreturn void procExit(int wstatus);
  */
 pid_t procWait(pid_t pid, int *wstatus, int flags);
 
+/**
+ * Inform the threads in a process that a signal was received.
+ */
+void procWakeThreads(Process *proc);
+
 #endif

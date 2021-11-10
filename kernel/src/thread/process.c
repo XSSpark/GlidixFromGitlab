@@ -1097,6 +1097,13 @@ noreturn void procExit(int wstatus)
 	Thread *thread = schedGetCurrentThread();
 	Process *proc = thread->proc;
 
+	ksiginfo_t si;
+	memset(&si, 0, sizeof(ksiginfo_t));
+	si.si_signo = SIGCHLD;
+	si.si_pid = proc->pid;
+	si.si_uid = proc->ruid;
+	si.si_code = CLD_EXITED;
+
 	if (proc->pid == 1)
 	{
 		panic("The init process attempted to exit!");
@@ -1115,7 +1122,9 @@ noreturn void procExit(int wstatus)
 	};
 
 	// remove the calling thread (us) from the process' thread table
+	mutexLock(&proc->threadTableLock);
 	treemapSet(proc->threads, thread->thid, NULL);
+	mutexUnlock(&proc->threadTableLock);
 
 	// detach us from the process, and ensure that we don't continue using the page table
 	cli();
@@ -1141,9 +1150,8 @@ noreturn void procExit(int wstatus)
 	};
 
 	if (parent->childWaiter != NULL) schedWake(parent->childWaiter);
+	schedDeliverSignalToProc(parent, &si);
 	mutexUnlock(&procTableLock);
-
-	// TODO: also send SIGCHLD to parent
 
 	// exit from this thread
 	schedDetachKernelThread(thread);
@@ -1239,3 +1247,16 @@ pid_t procWait(pid_t pid, int *wstatus, int flags)
 	if (wstatus != NULL) *wstatus = ctx.wstatus;
 	return ctx.result;
 };
+
+static void _procWakeThreadsWalkCallback(TreeMap *map, uint32_t thid, void *th_, void *context_)
+{
+	Thread *thread = (Thread*) th_;
+	schedWake(thread);
+};
+
+void procWakeThreads(Process *proc)
+{
+	mutexLock(&proc->threadTableLock);
+	treemapWalk(proc->threads, _procWakeThreadsWalkCallback, NULL);
+	mutexUnlock(&proc->threadTableLock);
+}

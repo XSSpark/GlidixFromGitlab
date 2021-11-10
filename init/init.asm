@@ -5,26 +5,33 @@ section .text
 
 global _start
 _start:
+	mov rax, 1				; sys_sigaction
+	mov rdi, 18				; SIGCHLD
+	mov rsi, sigactionSIGCHLD
+	xor rdx, rdx
+	syscall
+
 	mov rax, 3				; sys_fork
 	syscall
 
 	test rax, rax
 	jz _child
 
-	mov rdi, rax				; PID into RDI
-	mov rax, 12				; sys_waitpid
-	mov rsi, status				; &status
-	xor rdx, rdx				; flags = 0
-	syscall
-
-	mov ecx, [status]
-	xchg bx, bx
 	jmp $
-
+	
 _child:
 	xor rax, rax				; sys_exit
-	mov rdi, 0x23
+	mov rdi, 0x57
 	syscall
+
+_onSIGCHLD:
+	xchg bx, bx
+	ret
+
+sigactionSIGCHLD:
+	dq _onSIGCHLD
+	dq 0
+	dq 0
 
 section .data
 status:

@@ -66,6 +66,8 @@
  */
 #define	CPU_MSG_INVLPG					1		/* invalidate page */
 #define	CPU_MSG_INVLPG_TABLE				2		/* invalidate the whole page table */
+#define	CPU_MSG_PROC_SIGNAL				3		/* process received signal */
+#define	CPU_MSG_THREAD_SIGNAL				4		/* thread received signal */
 
 /**
  * Represents a message for the CPU.
@@ -315,5 +317,17 @@ void cpuProcessMessages();
  * Invalidate the TLB entry for the specified pointer in the specified CR3, among all CPUs.
  */
 void cpuInvalidatePage(uint64_t cr3, void *ptr);
+
+/**
+ * Tell other CPUs that the process using the specified CR3 received a signal, and so someone
+ * should dispatch it.
+ */
+void cpuInformProcSignalled(Process *proc);
+
+/**
+ * Tell other CPUs that the specified thread received a signal, and so someone should dispatch
+ * it.
+ */
+void cpuInformThreadSignalled(Thread *thread);
 
 #endif

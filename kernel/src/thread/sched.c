@@ -682,6 +682,7 @@ int schedCheckSignals(ksiginfo_t *si)
 				if (me->proc->sigPending & (1UL << i))
 				{
 					memcpy(si, &me->proc->sigInfo[i], sizeof(ksiginfo_t));
+					me->proc->sigPending &= ~(1UL << i);
 					spinlockRelease(&schedLock, irqState);
 					return 0;
 				};
@@ -690,6 +691,7 @@ int schedCheckSignals(ksiginfo_t *si)
 			if (me->sigPending & (1UL << i))
 			{
 				memcpy(si, &me->sigInfo[i], sizeof(ksiginfo_t));
+				me->sigPending &= ~(1UL << i);
 				spinlockRelease(&schedLock, irqState);
 				return 0;
 			};
@@ -698,4 +700,32 @@ int schedCheckSignals(ksiginfo_t *si)
 
 	spinlockRelease(&schedLock, irqState);
 	return -1;
+};
+
+void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si)
+{
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t mask = (1UL << si->si_signo);
+	SigAction *act = &proc->sigActions[si->si_signo];
+	user_addr_t handler = act->sa_sigaction_handler;
+	if (handler == SIG_DFL) handler = schedGetDefaultSignalAction(si->si_signo);
+	if (handler == SIG_IGN)
+	{
+		// the signal is ignored, so there's no need to deliver it
+		spinlockRelease(&schedLock, irqState);
+		return;
+	};
+
+	// not ignored, so deliver unless already there
+	int signalled = 0;
+	if ((proc->sigPending & mask) == 0)
+	{
+		memcpy(&proc->sigInfo[si->si_signo], si, sizeof(ksiginfo_t));
+		proc->sigPending |= mask;
+		signalled = 1;
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	if (signalled) cpuInformProcSignalled(proc);
 };

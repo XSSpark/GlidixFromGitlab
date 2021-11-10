@@ -300,4 +300,9 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
  */
 int schedCheckSignals(ksiginfo_t *si);
 
+/**
+ * Deliver a signal to a process.
+ */
+void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si);
+
 #endif
