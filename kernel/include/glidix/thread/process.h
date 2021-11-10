@@ -319,6 +319,16 @@ struct Process_
 	 * process table lock.
 	 */
 	Thread *childWaiter;
+
+	/**
+	 * Session ID. Protected by the process table lock.
+	 */
+	pid_t sid;
+
+	/**
+	 * Process group ID. Protected by the process table lock.
+	 */
+	pid_t pgid;
 };
 
 /**
@@ -342,6 +352,11 @@ typedef struct
 	 * The parent pid (i.e. the process looking for children).
 	 */
 	pid_t parent;
+
+	/**
+	 * The parent PGID.
+	 */
+	pid_t parentPGID;
 
 	/**
 	 * Wait status to return.
@@ -379,6 +394,22 @@ typedef struct
 	 */
 	errno_t err;
 } PageCloneContext;
+
+/**
+ * Walk context for getting the session ID for a process group ID.
+ */
+typedef struct
+{
+	/**
+	 * The process group ID.
+	 */
+	pid_t pgid;
+
+	/**
+	 * Initialized to 0, set to a session ID if one is found.
+	 */
+	pid_t sid;
+} ProcessGroupSessionWalkContext;
 
 /**
  * Create a new process.
@@ -509,5 +540,18 @@ pid_t procWait(pid_t pid, int *wstatus, int flags);
  * Inform the threads in a process that a signal was received.
  */
 void procWakeThreads(Process *proc);
+
+/**
+ * Create a new session by setting the SID and PGID of the calling process to its own PID. Returns 0 on success,
+ * or a negated error number on error.
+ */
+int procSetSessionID();
+
+/**
+ * Set the process group ID of `pid` to `pgid`. If `pid` is 0, the calling process is used. If `pgid` is 0, then
+ * the process group ID will be the PID of the target process. The new process group for the process must be in
+ * the same session as the target process. Returns 0 on success, or a negated error number on error.
+ */
+int procSetProcessGroup(pid_t pid, pid_t pgid);
 
 #endif

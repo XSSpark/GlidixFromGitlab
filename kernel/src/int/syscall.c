@@ -53,6 +53,10 @@ void* _sysCallTable[] = {
 	sys_getpid,							// 10
 	sys_getppid,							// 11
 	sys_waitpid,							// 12
+	sys_setsid,							// 13
+	sys_getsid,							// 14
+	NULL,	// TODO: sys_setpgid					// 15
+	sys_getpgrp,							// 16
 };
 
 /**

@@ -54,4 +54,24 @@ pid_t sys_getppid();
  */
 pid_t sys_waitpid(pid_t pid, user_addr_t uwstatus, int flags);
 
+/**
+ * Create a new session. Implements the `setsid()` system call.
+ */
+int sys_setsid();
+
+/**
+ * Get the session ID.
+ */
+pid_t sys_getsid();
+
+/**
+ * Implements the `setpgid()` system call.
+ */
+int sys_setpgid(pid_t pid, pid_t pgid);
+
+/**
+ * Get the process group ID of the calling process.
+ */
+pid_t sys_getpgrp();
+
 #endif

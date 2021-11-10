@@ -96,3 +96,23 @@ pid_t sys_waitpid(pid_t pid, user_addr_t uwstatus, int flags)
 
 	return result;
 };
+
+int sys_setsid()
+{
+	return procSetSessionID();
+};
+
+pid_t sys_getsid()
+{
+	return schedGetCurrentThread()->proc->sid;
+};
+
+int sys_setpgid(pid_t pid, pid_t pgid)
+{
+	return procSetProcessGroup(pid, pgid);
+};
+
+pid_t sys_getpgrp()
+{
+	return schedGetCurrentThread()->proc->pgid;
+};

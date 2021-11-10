@@ -46,6 +46,14 @@ static Mutex procTableLock;
 static TreeMap* procTable;
 
 /**
+ * The next available PID.
+ * 
+ * TODO: better allocation system (note that a PID has be different from every other running process'
+ * PID, PGID and SID!).
+ */
+static pid_t procNextPID = 1;
+
+/**
  * The anonymous mapping. This is a special mapping description, with the refcount being initialized
  * to one and hence never released. This single object can be reused for ALL anonymous mappings,
  * as there is no associated file and when we fault we just read out all-zeroes.
@@ -412,6 +420,9 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 		child->sgid = me->proc->sgid;
 		child->rgid = me->proc->rgid;
 
+		child->sid = me->proc->sid;
+		child->pgid = me->proc->pgid;
+
 		PageCloneContext ctx;
 		ctx.parent = me->proc;
 		ctx.childPageTable = newPML4;
@@ -457,22 +468,7 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	// try allocating a PID
 	mutexLock(&procTableLock);
 
-	pid_t pid;
-	for (pid=1; pid<PROC_MAX; pid++)
-	{
-		if (treemapGet(procTable, pid) == NULL)
-		{
-			break;
-		};
-	};
-
-	if (pid == PROC_MAX)
-	{
-		mutexUnlock(&procTableLock);
-		procUnref(child);
-		kfree(info);
-		return -EAGAIN;
-	};
+	pid_t pid = __sync_fetch_and_add(&procNextPID, 1);
 
 	// map that PID to us
 	child->pid = pid;
@@ -1170,7 +1166,8 @@ static void _procWaitWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, v
 
 	if (proc->parent == ctx->parent)
 	{
-		if (proc->pid == ctx->pid || ctx->pid == -1)
+		if (proc->pid == ctx->pid || ctx->pid == -1 || proc->pgid == -ctx->pid
+			|| (ctx->pid == 0 && proc->pgid == ctx->parentPGID))
 		{
 			if (ctx->result == -ECHILD)
 			{
@@ -1204,6 +1201,7 @@ pid_t procWait(pid_t pid, int *wstatus, int flags)
 	ctx.parent = proc->pid;
 	ctx.child = NULL;
 	ctx.wstatus = 0;
+	ctx.parentPGID = proc->pgid;
 
 	mutexLock(&procTableLock);
 	while (1)
@@ -1259,4 +1257,110 @@ void procWakeThreads(Process *proc)
 	mutexLock(&proc->threadTableLock);
 	treemapWalk(proc->threads, _procWakeThreadsWalkCallback, NULL);
 	mutexUnlock(&proc->threadTableLock);
-}
+};
+
+static void _procFindGroupWalkCallback(TreeMap *tm, uint32_t pid, void *value_, void *context_)
+{
+	int *resultOut = (int*) context_;
+	Process *proc = (Process*) value_;
+
+	if (proc->pgid == schedGetCurrentThread()->proc->pid)
+	{
+		*resultOut = 1;
+	};
+};
+
+int procSetSessionID()
+{
+	Process *me = schedGetCurrentThread()->proc;
+	if (me->pid == 1)
+	{
+		// init is not allowed to have a session
+		return -EPERM;
+	};
+
+	mutexLock(&procTableLock);
+	
+	// see if any process belongs to the group of which we are the leader
+	int foundConflict = 0;
+	treemapWalk(procTable, _procFindGroupWalkCallback, &foundConflict);
+
+	if (foundConflict)
+	{
+		// not allowed
+		mutexUnlock(&procTableLock);
+		return -EPERM;
+	};
+
+	// we can do it
+	me->sid = me->pgid = me->pid;
+
+	mutexUnlock(&procTableLock);
+	return 0;
+};
+
+static void _procGetSessionWalkCallback(TreeMap *treemap, uint32_t pid, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	ProcessGroupSessionWalkContext *ctx = (ProcessGroupSessionWalkContext*) context_;
+
+	if (proc->pgid == ctx->pgid)
+	{
+		ctx->sid = proc->sid;
+	};
+};
+
+int procSetProcessGroup(pid_t pid, pid_t pgid)
+{
+	if (pid < 0)
+	{
+		return -EINVAL;
+	};
+
+	if (pid == 0)
+	{
+		pid = schedGetCurrentThread()->proc->pid;
+	};
+
+	if (pid == 1)
+	{
+		// cannot change the process group of init
+		return -EPERM;
+	};
+
+	if (pgid < 0)
+	{
+		return -EINVAL;
+	};
+
+	if (pgid == 0)
+	{
+		pgid = pid;
+	};
+
+	mutexLock(&procTableLock);
+
+	ProcessGroupSessionWalkContext ctx;
+	ctx.pgid = pgid;
+	ctx.sid = 0;
+
+	Process *target = treemapGet(procTable, pid);
+	pid_t myPID = schedGetCurrentThread()->proc->pid;
+	if (target == NULL || (target->pid != myPID && target->parent != myPID))
+	{
+		mutexUnlock(&procTableLock);
+		return -ESRCH;
+	};
+
+	treemapWalk(procTable, _procGetSessionWalkCallback, &ctx);
+	if (ctx.sid != target->sid || target->pid == target->sid)
+	{
+		mutexUnlock(&procTableLock);
+		return -EPERM;
+	};
+
+	target->pgid = pgid;
+	mutexUnlock(&procTableLock);
+
+	return 0;
+};
