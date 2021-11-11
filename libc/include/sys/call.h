@@ -1,6 +1,7 @@
 /*
-	Glidix Runtime
-	Copyright (c) 2014-2017, Madd Games.
+	Glidix Standard C Library (libc)
+
+	Copyright (c) 2021, Madd Games.
 	All rights reserved.
 	
 	Redistribution and use in source and binary forms, with or without

@@ -1,6 +1,7 @@
+#! /usr/bin/mbs
 /*
-	Glidix Standard C Library (libc)
-	
+	Glidix kernel
+
 	Copyright (c) 2021, Madd Games.
 	All rights reserved.
 	
@@ -26,41 +27,48 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _SYS_FSINFO_H
-#define _SYS_FSINFO_H
+import as;
+import stdopt;
+import cc;
+import dir;
 
-#include <sys/types.h>
+set libc_version = (mbs_release_version);
+print ('libc version: ' libc_version);
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-struct fsinfo
+macro libc_common
 {
-	dev_t					fs_dev;
-	char					fs_image[256];
-	char					fs_mntpoint[256];
-	char					fs_name[64];
-	size_t					fs_usedino;
-	size_t					fs_inodes;
-	size_t					fs_usedblk;
-	size_t					fs_blocks;
-	size_t					fs_blksize;
-	uint8_t					fs_bootid[16];
-	char					fs_pad[968];
+	cc_append_cflags '-D_GLIDIX_SOURCE';
+	as_srcdir_cc (mbs_srcdir '/asm');
+	cc_incdir (mbs_srcdir '/include');
+	cc_srcdir (mbs_srcdir '/src');
 };
 
-struct __fsinfo_record
+package 'libc' (libc_version)
 {
-	char					__image[256];
-	char					__mntpoint[256];
+	file ('/lib/libc.so')
+	{
+		cc_shared;
+
+		cc_append_ldflags '-nostdlib';
+		cc_append_libs '-lgcc';
+
+		libc_common;
+
+		cc_link;
+	};
 };
 
-/* implemented by the runtime */
-size_t _glidix_fsinfo(struct fsinfo *list, size_t count);
+package 'libc-dev' (libc_version)
+{
+	file ('/lib/libc.a')
+	{
+		libc_common;
 
-#ifdef __cplusplus
-}	/* extern "C" */
-#endif
+		cc_staticlib;
+	};
 
-#endif
+	file ('/usr/include')
+	{
+		dir_src (mbs_srcdir '/include');
+	};
+};

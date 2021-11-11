@@ -63,6 +63,7 @@ notify "Building from source directory: $srcdir"
 build dist-hdd-maker build-hdd-maker ''
 build gxboot gxboot-build "--host=x86_64-glidix"
 build kernel kernel-build "--host=x86_64-glidix"
+build libc libc-build "--host=x86_64-glidix"
 
 notify "Generating kernel symbols..."
 nm kernel-build/kernel/boot/initrd-sysroot/kernel.so | grep " T " | awk '{ print $1" "$3 }' > kernel.sym
