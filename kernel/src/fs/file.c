@@ -55,6 +55,20 @@ File* vfsDup(File *fp)
 	return fp;
 };
 
+File* vfsFork(File *fp)
+{
+	File *newFP = (File*) kmalloc(sizeof(File));
+	if (newFP == NULL) return NULL;
+
+	newFP->oflags = fp->oflags;
+	newFP->refcount = 1;
+	newFP->walker = vfsPathWalkerDup(&fp->walker);
+	mutexInit(&newFP->posLock);
+	newFP->offset = fp->offset;
+
+	return newFP;
+};
+
 void vfsClose(File *fp)
 {
 	if (__sync_add_and_fetch(&fp->refcount, -1) == 0)
@@ -69,7 +83,7 @@ ssize_t vfsPRead(File *fp, void *buffer, size_t size, off_t pos)
 	if ((fp->oflags & O_RDONLY) == 0)
 	{
 		// not open for reading
-		return -EPERM;
+		return -EBADF;
 	};
 
 	return vfsInodeRead(fp->walker.current, buffer, size, pos);
@@ -80,7 +94,7 @@ ssize_t vfsPWrite(File *fp, const void *buffer, size_t size, off_t pos)
 	if ((fp->oflags & O_WRONLY) == 0)
 	{
 		// not open for writing
-		return -EPERM;
+		return -EBADF;
 	};
 
 	return vfsInodeWrite(fp->walker.current, buffer, size, pos);
@@ -98,7 +112,7 @@ ssize_t vfsRead(File *fp, void *buffer, size_t size)
 	if ((fp->oflags & O_RDONLY) == 0)
 	{
 		// not open for reading
-		return -EPERM;
+		return -EBADF;
 	};
 
 	mutexLock(&fp->posLock);
@@ -123,7 +137,7 @@ ssize_t vfsWrite(File *fp, const void *buffer, size_t size)
 	if ((fp->oflags & O_WRONLY) == 0)
 	{
 		// not open for writing
-		return -EPERM;
+		return -EBADF;
 	};
 
 	mutexLock(&fp->posLock);

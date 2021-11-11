@@ -30,5 +30,13 @@
 #define	__glidix_int_syscall_h
 
 #include <glidix/util/common.h>
+#include <glidix/int/signal.h>
+
+/**
+ * Dispatch a signal from a system call. `si` is the signal to dispatch; `rax` is the
+ * value to store in the RAX register, and will appear as the return value of the
+ * system call.
+ */
+void sysDispatchSignal(ksiginfo_t *si, uint64_t rax);
 
 #endif

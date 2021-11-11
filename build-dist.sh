@@ -62,7 +62,7 @@ notify "Building from source directory: $srcdir"
 
 build dist-hdd-maker build-hdd-maker ''
 build gxboot gxboot-build "--host=x86_64-glidix"
-build kernel kernel-build "--host=x86_64-glidix --mode=debug"
+build kernel kernel-build "--host=x86_64-glidix"
 
 notify "Generating kernel symbols..."
 nm kernel-build/kernel/boot/initrd-sysroot/kernel.so | grep " T " | awk '{ print $1" "$3 }' > kernel.sym
@@ -81,7 +81,9 @@ notify "Installing all packages in image sysroot..."
 (cd kernel-build && DESTDIR=../build-sysroot make install) || exit 1
 
 # TODO: temporary; build init properly later
-(nasm $srcdir/init/init.asm -felf64 -o init.o && x86_64-glidix-ld init.o -o build-sysroot/boot/initrd-sysroot/init) || exit 1
+nasm $srcdir/init/init.asm -felf64 -o init_asm.o || exit 1
+x86_64-glidix-cc -c $srcdir/init/init.c -o init_c.o || exit 1
+x86_64-glidix-cc init_asm.o init_c.o -o build-sysroot/boot/initrd-sysroot/init -nostdlib -lgcc || exit 1
 
 notify "Creating the initrd..."
 mkdir -p build-sysroot/boot || exit 1

@@ -1,23 +1,33 @@
 ; Currently this is just a demo application for testing,
-; read init will be put in this directory later
+; real init will be put in this directory later
 
 section .text
 
+extern main
+
 global _start
+global openat
+global write
+global dup3
+
 _start:
-	mov rax, 1				; sigaction
-	mov rdi, 11				; SIGSEGV
-	mov rsi, sigactionSIGSEGV		; the struct sigaction for our handler
-	xor rdx, rdx				; oldact = NULL
+	call main
+	mov rdi, rax
+	xor rax, rax
 	syscall
 
-	xor rax, rax
-	mov [rax], rax
-
-onSIGSEGV:
+openat:
+	mov rax, 4
+	mov r10, rcx
+	syscall
 	ret
 
-sigactionSIGSEGV:
-	dq onSIGSEGV
-	dq 0
-	dq 0
+write:
+	mov rax, 7
+	syscall
+	ret
+
+dup3:
+	mov rax, 18
+	syscall
+	ret

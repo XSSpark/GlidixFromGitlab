@@ -66,6 +66,8 @@
  */
 #define	CPU_MSG_INVLPG					1		/* invalidate page */
 #define	CPU_MSG_INVLPG_TABLE				2		/* invalidate the whole page table */
+#define	CPU_MSG_PROC_SIGNAL				3		/* process received signal */
+#define	CPU_MSG_THREAD_SIGNAL				4		/* thread received signal */
 
 /**
  * Represents a message for the CPU.
@@ -134,16 +136,8 @@ struct CPU_
 	uint64_t syscallSaveSlot;					// 0x18
 
 	// --- END OF ASSEMBLY-USEABLE AREA ---
-
-	/**
-	 * The TSS for this CPU.
-	 */
-	TSS tss;
-
-	/**
-	 * The 'idle thread' for this CPU.
-	 */
-	Thread idleThread;
+	// --- PLEASE KEEP THIS ALIGNED AT 16-BYTE BOUNDARY (CURRENTLY AT
+	// 0x20) SO THAT THE STACKS BELOW ARE ALIGNED! ---
 
 	/**
 	 * Space reserved for the idle thread stack.
@@ -154,6 +148,16 @@ struct CPU_
 	 * Space reserved for the stratup thread stack.
 	 */
 	char startupStack[CPU_STARTUP_STACK_SIZE];
+
+	/**
+	 * The TSS for this CPU.
+	 */
+	TSS tss;
+
+	/**
+	 * The 'idle thread' for this CPU.
+	 */
+	Thread idleThread;
 
 	/**
 	 * This CPU's APIC ID.
@@ -313,5 +317,17 @@ void cpuProcessMessages();
  * Invalidate the TLB entry for the specified pointer in the specified CR3, among all CPUs.
  */
 void cpuInvalidatePage(uint64_t cr3, void *ptr);
+
+/**
+ * Tell other CPUs that the process using the specified CR3 received a signal, and so someone
+ * should dispatch it.
+ */
+void cpuInformProcSignalled(Process *proc);
+
+/**
+ * Tell other CPUs that the specified thread received a signal, and so someone should dispatch
+ * it.
+ */
+void cpuInformThreadSignalled(Thread *thread);
 
 #endif

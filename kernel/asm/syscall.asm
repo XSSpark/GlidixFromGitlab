@@ -30,6 +30,7 @@ bits 64
 extern _sysCallTable
 extern _sysCallCount
 extern _sysCallInvalid
+extern _sysCheckSignals
 
 global _syscall_entry
 
@@ -87,6 +88,11 @@ _syscall_entry:
 	mov rcx, r10
 	call rax
 
+	; check for signals; this takes the signal return value as an argument, then returns it
+	; again
+	mov rdi, rax
+	call _sysCheckSignals
+
 	; disable interrupts before returning
 	cli
 
@@ -102,7 +108,7 @@ _syscall_entry:
 	fxrstor [rsp]
 
 	; restore userspace data segments
-	mov r8, 0x10
+	mov r8, 0x23
 	mov ds, r8w
 	mov es, r8w
 
@@ -111,11 +117,11 @@ _syscall_entry:
 
 	; we now need:
 	; RCX = the userspace RIP that sysret will return to
-	; R11 = the userspace RFLAGs that sysret will return to
+	; R11 = the userspace RFLAGS that sysret will return to
 	; RAX = the return value
-	; RDX = stores the userspace kernel stack, we can ignore (OK to "leak",
+	; RDX = stores the userspace stack, we can ignore (OK to "leak",
 	;       don't bother zeroing)
-	; R8 = contains the value 0x10 (the userspace data segment); again, OK
+	; R8 = contains the value 0x23 (the userspace data segment); again, OK
 	;       to "leak"
 	; all other volatile registers will be wiped with zeroes, to prevent
 	; any data leaks from kernel
@@ -127,7 +133,6 @@ _syscall_entry:
 	db 0x48, 0x0F, 0x07
 
 .invalid:
-	; invalid system call, pass the context and call `_sysCallInvalid`.
+	; invalid system call, call `_sysCallInvalid`.
 	; the function is expected to never return
-	mov rdi, rsp
 	call _sysCallInvalid

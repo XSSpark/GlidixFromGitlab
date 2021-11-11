@@ -24,49 +24,42 @@
 ;	OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 ;	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-section .user_aux
+section .text
 bits 64
 
-global userAuxSigReturn
+global _forkEnterChild
+_forkEnterChild:
+	; load GPRs from the context we were passed in
+	mov rbx, [rdi+0x08]
+	mov rbp, [rdi+0x10]
+	mov r12, [rdi+0x18]
+	mov r13, [rdi+0x20]
+	mov r14, [rdi+0x28]
+	mov r15, [rdi+0x30]
+	mov rsi, [rdi+0x38]		; RSI = userspace stack
+	mov r11, [rdi+0x40]		; R11 = userspace RFLAGS
+	mov rcx, [rdi+0x48]		; RCX = userspace RIP
+	fxrstor [rdi+0x50]
 
-userAuxSigReturn:
-	; restore the old signal mask
-	mov rax, 2				; sys_sigmask
-	mov rdi, 2				; SIG_SETMASK
-	mov rsi, [rsp+8]			; get sigmask from the context
-	syscall
+	; disable interrupts and set userspace segments
+	cli
+	mov dx, 0x23
+	mov ds, dx
+	mov es, dx
 
-	; load the FPU regs from the context
-	fxrstor [rsp+0x30]
+	; go to the userspace stack
+	mov rsp, rsi
 
-	; set the stack pointer to the kmcontext_gpr_t pointer.
-	; this pops context header (uc_link, etc), the FPU regs,
-	; and the siginfo_t, and leaves us at the kmcontext_gpr_t
-	; pointer, which is just above the red zone
-	mov rsp, [rsp+0x230]
+	; clear all the volatile regs (except R11 and RCX which we need to do the return);
+	; most notably, clearing `rax` makes it look like `fork()` returns 0 to the child
+	xor rax, rax
+	xor rdx, rdx
+	xor rsi, rsi
+	xor rdi, rdi
+	xor r8, r8
+	xor r9, r9
+	xor r10, r10
 
-	; pop off the copy of return RSP and ignore it
-	pop rax
-
-	; now pop off the values of the registers
-	popf
-	pop rax
-	pop rbx
-	pop rcx
-	pop rdx
-	pop rsi
-	pop rdi
-	pop rbp
-	pop r8
-	pop r9
-	pop r10
-	pop r11
-	pop r12
-	pop r13
-	pop r14
-	pop r15
-
-	; 2 things left on the stack: the return RIP, and the red
-	; zone; use RET to jump to the return address and to pop off
-	; the 128 bytes
-	ret 128
+	; return using SYSRET (NASM doesn't encode 64-bit SYSRET correctly so we enter it
+	; manually)
+	db 0x48, 0x0F, 0x07

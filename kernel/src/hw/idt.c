@@ -253,6 +253,8 @@ noreturn void idtReboot()
 
 static void isrDispatchSignal(Regs *regs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
 {
+	sti();
+	
 	kmcontext_gpr_t gprs;
 	gprs.rax = regs->rax;
 	gprs.rbx = regs->rbx;
@@ -271,6 +273,7 @@ static void isrDispatchSignal(Regs *regs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
 	gprs.r14 = regs->r14;
 	gprs.r15 = regs->r15;
 	gprs.rip = regs->rip;
+	gprs.rflags = regs->rflags;
 	
 	schedDispatchSignal(&gprs, fpuRegs, siginfo);
 };
@@ -308,7 +311,7 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	}
 	else if (regs->intNo == I_GPF)
 	{
-		panic("GPF occured (rip=0x%lx)\n", regs->rip);
+		panic("GPF occured (rip=0x%lx, code=0x%lx)\n", regs->rip, regs->errCode);
 	}
 	else if (regs->intNo == I_DOUBLE)
 	{
@@ -362,7 +365,17 @@ void isrHandler(Regs *regs, FPURegs *fpuregs)
 	else
 	{
 		// unsupported interrupt
-		panic("Receive unexpected interrupt: %lu", regs->intNo);
+		panic("Received unexpected interrupt: %lu", regs->intNo);
+	};
+
+	// check for signals
+	if ((regs->cs & 3) == 3)
+	{
+		ksiginfo_t si;
+		if (schedCheckSignals(&si) == 0)
+		{
+			isrDispatchSignal(regs, fpuregs, &si);
+		};
 	};
 };
 

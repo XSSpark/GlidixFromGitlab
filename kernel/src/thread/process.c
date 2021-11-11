@@ -46,6 +46,14 @@ static Mutex procTableLock;
 static TreeMap* procTable;
 
 /**
+ * The next available PID.
+ * 
+ * TODO: better allocation system (note that a PID has be different from every other running process'
+ * PID, PGID and SID!).
+ */
+static pid_t procNextPID = 1;
+
+/**
  * The anonymous mapping. This is a special mapping description, with the refcount being initialized
  * to one and hence never released. This single object can be reused for ALL anonymous mappings,
  * as there is no associated file and when we fault we just read out all-zeroes.
@@ -72,16 +80,83 @@ static void procInit()
 
 KERNEL_INIT_ACTION(procInit, KIA_PROCESS_INIT);
 
+static ProcessMapping* procMappingDup(ProcessMapping *mapping)
+{
+	__sync_add_and_fetch(&mapping->refcount, 1);
+	return mapping;
+};
+
+static void procMappingUnref(ProcessMapping *mapping)
+{
+	if (__sync_add_and_fetch(&mapping->refcount, -1) == 0)
+	{
+		vfsInodeUnref(mapping->inode);
+		kfree(mapping);
+	};
+};
+
+static void _procUnrefMappingWalk(TreeMap *treemap, uint32_t index, void *value_, void *context_)
+{
+	ProcessMapping *mapping = (ProcessMapping*) value_;
+	procMappingUnref(mapping);
+};
+
+static void procDeletePageTableRecur(void *ptr, int depth)
+{
+	if (depth == 4)
+	{
+		// `ptr` actually points to a user page
+		komUserPageUnref(ptr);
+	}
+	else
+	{
+		uint64_t *table = (uint64_t*) ptr;
+		int i;
+		int limit = depth == 0 ? 256 : 512;
+		for (i=0; i<limit; i++)
+		{
+			uint64_t ent = table[i];
+			if (ent & PT_PRESENT)
+			{
+				void *sub = komPhysToVirt(ent & PT_PHYS_MASK);
+				ASSERT(sub != NULL);
+				procDeletePageTableRecur(sub, depth+1);
+			};
+		};
+
+		komReleaseBlock(ptr, KOM_BUCKET_PAGE);
+	};
+};
+
+static void procDeletePageTable(void *pml4)
+{
+	Thread *me = schedGetCurrentThread();
+	if (me->proc != NULL && me->proc->pagetabVirt == pml4)
+	{
+		panic("Process is trying to delete its own page table!");
+	};
+
+	procDeletePageTableRecur(pml4, 0);
+};
+
 void procUnref(Process *proc)
 {
 	if (__sync_add_and_fetch(&proc->refcount, -1) == 0)
 	{
-		// TODO: delete all the pages
-		komReleaseBlock(proc->pagetabVirt, KOM_BUCKET_PAGE);
+		treemapWalk(proc->mappingTree, _procUnrefMappingWalk, NULL);
+		procDeletePageTable(proc->pagetabVirt);
 		treemapDestroy(proc->threads);
 		treemapDestroy(proc->mappingTree);
 		vfsPathWalkerDestroy(&proc->rootDir);
 		vfsPathWalkerDestroy(&proc->currentDir);
+
+		int fd;
+		for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+		{
+			File *fp = proc->fileTable[fd].fp;
+			if (fp != NULL) vfsClose(fp);
+		};
+
 		kfree(proc);
 	};
 };
@@ -111,19 +186,140 @@ static void procStartup(void *context_)
 	panic("can't return from thread func yet!!");
 };
 
-static ProcessMapping* procMappingDup(ProcessMapping *mapping)
+/**
+ * Get the page table entry for memory address `addr`. Call this only when the pagemap lock is acquired.
+ * If the PTE does not yet exist, it will be as unmapped. NULL is returned if the PTE does not exist and
+ * we have furthermore ran out of memory.
+ */
+static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
 {
-	__sync_add_and_fetch(&mapping->refcount, 1);
-	return mapping;
+	PageNodeEntry *nodes[4];
+	pagetabGetNodes((void*)addr, nodes);
+
+	int i;
+	for (i=0; i<3; i++)
+	{
+		PageNodeEntry *node = nodes[i];
+		if (node->value == 0)
+		{
+			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+			if (nextLevel == NULL)
+			{
+				return NULL;
+			};
+
+			memZeroPage(nextLevel);
+
+			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
+			// so that we can set these per-page without worrying about the higher levels
+			node->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;
+
+			// invalidate the next node to apply the above
+			invlpg(nodes[i+1]);
+		};
+	};
+
+	return nodes[3];
 };
 
-static void procMappingUnref(ProcessMapping *mapping)
+/**
+ * Gets a useable pointer to the PTE for `addr` in a different address space. This is only used while
+ * cloning page tables. Returns NULL if we ran out of memory trying to allocate paging structures.
+ */
+static PageNodeEntry* _procGetForeignPageTableEntry(void *pml4, user_addr_t addr)
 {
-	if (__sync_add_and_fetch(&mapping->refcount, -1) == 0)
+	int indexes[4];
+	indexes[3] = (addr >> (12)) & 0x1FF;
+	indexes[2] = (addr >> (12+9)) & 0x1FF;
+	indexes[1] = (addr >> (12+9+9)) & 0x1FF;
+	indexes[0] = (addr >> (12+9+9+9)) & 0x1FF;
+
+	void *table = pml4;
+
+	int i;
+	for (i=0; i<4; i++)
 	{
-		vfsInodeUnref(mapping->inode);
-		kfree(mapping);
+		PageNodeEntry *ent = (PageNodeEntry*) table + indexes[i];
+
+		// if we are at the final level, just return it (it's the PTE)
+		if (i == 3) return ent;
+
+		if (ent->value == 0)
+		{
+			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
+			if (nextLevel == NULL)
+			{
+				return NULL;
+			};
+
+			memZeroPage(nextLevel);
+
+			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
+			// so that we can set these per-page without worrying about the higher levels
+			ent->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;	
+
+			// go to it
+			table = nextLevel;
+		}
+		else
+		{
+			table = komPhysToVirt(ent->value & PT_PHYS_MASK);
+			ASSERT(table != NULL);
+		};
 	};
+
+	// should never get here
+	return NULL;
+};
+
+static void _procPageCloneWalkCallback(TreeMap *parentTree, uint32_t index, void *value_, void *context_)
+{
+	PageCloneContext *ctx = (PageCloneContext*) context_;
+	ProcessMapping *mapping = (ProcessMapping*) value_;
+	user_addr_t addr = ((user_addr_t) index) << 12;
+	PageNodeEntry *parentPTE = _procGetPageTableEntry(addr);
+	PageNodeEntry *childPTE = _procGetForeignPageTableEntry(ctx->childPageTable, addr);
+	
+	if (parentPTE == NULL || childPTE == NULL)
+	{
+		ctx->err = ENOMEM;
+		return;
+	};
+
+	// copy the mapping into the new table
+	if (treemapSet(ctx->childTree, index, mapping) != 0)
+	{
+		ctx->err = ENOMEM;
+		return;
+	};
+
+	// successful, increment refcount
+	procMappingDup(mapping);
+
+	// if this is a private mapping, and we have PROT_WRITE permission, and the page is mapped writeable,
+	// we must turn it into copy-on-write
+	if ((mapping->mflags & MAP_PRIVATE) && (parentPTE->value & PT_PRESENT)
+		&& (parentPTE->value & PT_PROT_WRITE))
+	{
+		// mark non-writeable, copy-on-write for parent
+		parentPTE->value &= ~(PT_WRITE);
+		parentPTE->value |= PT_COW;
+
+		// inform any other CPUs running this process that this happened
+		invlpg((void*) addr);
+		cpuInvalidatePage(ctx->parent->cr3, (void*) addr);
+	};
+
+	// if the page is present, increase its refcount
+	if (parentPTE->value & PT_PRESENT)
+	{
+		void *page = komPhysToVirt(parentPTE->value & PT_PHYS_MASK);
+		ASSERT(page != NULL);
+		komUserPageDup(page);
+	};
+
+	// map into the new table
+	childPTE->value = parentPTE->value;
 };
 
 pid_t procCreate(KernelThreadFunc func, void *param)
@@ -201,19 +397,19 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	newPML4[510] = myPML4[510];
 	newPML4[511] = pagetabGetPhys(myPML4) | PT_PRESENT | PT_WRITE | PT_NOEXEC;
 
-	// TODO: if the calling process is non-kernel, clone the page table
-	if (me->proc != NULL)
-	{
-		panic("I don't know how to clone page tables yet!");
-	};
-
 	// fill out the process structure
 	memset(child, 0, sizeof(Process));
 	child->cr3 = pagetabGetPhys(myPML4);
 	child->pagetabVirt = newPML4;
 	child->mappingTree = mappingTree;
 	child->parent = me->proc == NULL ? 1 : me->proc->pid;
-	
+
+	child->rootDir = vfsPathWalkerGetRoot();
+	child->currentDir = vfsPathWalkerGetCurrentDir();
+	child->threads = threads;
+	child->refcount = 1;
+
+	// if the calling process is non-kernel, inherit properties
 	if (me->proc != NULL)
 	{
 		child->euid = me->proc->euid;
@@ -223,32 +419,56 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 		child->egid = me->proc->egid;
 		child->sgid = me->proc->sgid;
 		child->rgid = me->proc->rgid;
-	};
 
-	child->rootDir = vfsPathWalkerGetRoot();
-	child->currentDir = vfsPathWalkerGetCurrentDir();
-	child->threads = threads;
-	child->refcount = 1;
+		child->sid = me->proc->sid;
+		child->pgid = me->proc->pgid;
+
+		PageCloneContext ctx;
+		ctx.parent = me->proc;
+		ctx.childPageTable = newPML4;
+		ctx.childTree = mappingTree;
+		ctx.err = 0;
+
+		mutexLock(&me->proc->mapLock);
+		treemapWalk(me->proc->mappingTree, _procPageCloneWalkCallback, &ctx);
+		mutexUnlock(&me->proc->mapLock);
+
+		if (ctx.err != 0)
+		{
+			procUnref(child);
+			kfree(info);
+			return -ctx.err;
+		};
+
+		mutexLock(&me->proc->fileTableLock);
+		int fd;
+		for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+		{
+			FileTableEntry *oldEnt = &me->proc->fileTable[fd];
+			FileTableEntry *newEnt = &child->fileTable[fd];
+
+			if (oldEnt->fp != NULL && oldEnt->fp != PROC_FILE_RESV)
+			{
+				File *newFP = vfsFork(oldEnt->fp);
+				if (newFP == NULL)
+				{
+					mutexUnlock(&me->proc->fileTableLock);
+					procUnref(child);
+					kfree(info);
+					return -ENOMEM;
+				};
+
+				newEnt->fp = newFP;
+				newEnt->cloexec = oldEnt->cloexec;
+			};
+		};
+		mutexUnlock(&me->proc->fileTableLock);
+	};
 
 	// try allocating a PID
 	mutexLock(&procTableLock);
 
-	pid_t pid;
-	for (pid=1; pid<PROC_MAX; pid++)
-	{
-		if (treemapGet(procTable, pid) == NULL)
-		{
-			break;
-		};
-	};
-
-	if (pid == PROC_MAX)
-	{
-		mutexUnlock(&procTableLock);
-		procUnref(child);
-		kfree(info);
-		return -EAGAIN;
-	};
+	pid_t pid = __sync_fetch_and_add(&procNextPID, 1);
 
 	// map that PID to us
 	child->pid = pid;
@@ -275,42 +495,6 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 	mutexUnlock(&procTableLock);
 	schedDetachKernelThread(startupThread);
 	return pid;
-};
-
-/**
- * Get the page table entry for memory address `addr`. Call this only when the pagemap lock is acquired.
- * If the PTE does not yet exist, it will be as unmapped. NULL is returned if the PTE does not exist and
- * we have furthermore ran out of memory.
- */
-static PageNodeEntry* _procGetPageTableEntry(user_addr_t addr)
-{
-	PageNodeEntry *nodes[4];
-	pagetabGetNodes((void*)addr, nodes);
-
-	int i;
-	for (i=0; i<3; i++)
-	{
-		PageNodeEntry *node = nodes[i];
-		if (node->value == 0)
-		{
-			void *nextLevel = komAllocBlock(KOM_BUCKET_PAGE, KOM_POOLBIT_ALL);
-			if (nextLevel == NULL)
-			{
-				return NULL;
-			};
-
-			memZeroPage(nextLevel);
-
-			// all intermediate levels are mapped as WRITE, USER, PRESENT, and with NOEXEC,
-			// so that we can set these per-page without worrying about the higher levels
-			node->value = pagetabGetPhys(nextLevel) | PT_WRITE | PT_USER | PT_PRESENT;
-
-			// invalidate the next node to apply the above
-			invlpg(nodes[i+1]);
-		};
-	};
-
-	return nodes[3];
 };
 
 user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err)
@@ -502,8 +686,28 @@ void procBeginExec()
 {
 	Process *proc = schedGetCurrentThread()->proc;
 
+	if (proc->numThreads != 1)
+	{
+		panic("TODO: i don't know how to kill other threads yet!");
+	};
+
 	// reset signal dispositions
 	schedResetSigActions();
+
+	// close all cloexec files
+	mutexLock(&proc->fileTableLock);
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		FileTableEntry *ent = &proc->fileTable[fd];
+		if (ent->cloexec && ent->fp != NULL)
+		{
+			vfsClose(ent->fp);
+			ent->fp = NULL;
+			ent->cloexec = 0;
+		};
+	};
+	mutexUnlock(&proc->fileTableLock);
 	
 	// unmap all userspace pages
 	mutexLock(&proc->mapLock);
@@ -694,6 +898,56 @@ int procToKernelCopy(void *ptr, user_addr_t addr, size_t size)
 	return status;
 };
 
+int procReadUserString(char *buffer, user_addr_t addr)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+	char *put = buffer;
+
+	int status = 0;
+	size_t size = PROC_USER_STRING_SIZE;
+
+	mutexLock(&proc->mapLock);
+	while (size != 0)
+	{
+		if (_procPageFault(addr, 0, NULL) != 0)
+		{
+			status = -EFAULT;
+			break;
+		};
+
+		size_t pageLeft = 0x1000 - (addr & 0xFFF);
+		size_t sizeToCopy = size > pageLeft ? pageLeft : size;
+
+		memcpy(put, (void*)addr, sizeToCopy);
+
+		size_t i;
+		for (i=0; i<sizeToCopy; i++)
+		{
+			if (put[i] == 0)
+			{
+				break;
+			};
+		};
+
+		if (i != sizeToCopy)
+		{
+			break;
+		};
+
+		addr += sizeToCopy;
+		put += sizeToCopy;
+		size -= sizeToCopy;
+	};
+	mutexUnlock(&proc->mapLock);
+
+	if (size == 0)
+	{
+		status = -EOVERFLOW;
+	};
+
+	return status;
+};
+
 int procToUserCopy(user_addr_t addr, const void *ptr, size_t size)
 {
 	Process *proc = schedGetCurrentThread()->proc;
@@ -722,4 +976,470 @@ int procToUserCopy(user_addr_t addr, const void *ptr, size_t size)
 	mutexUnlock(&proc->mapLock);
 
 	return status;
+};
+
+Process* procByPID(pid_t pid)
+{
+	mutexLock(&procTableLock);
+	Process *proc = (Process*) treemapGet(procTable, pid);
+	if (proc != NULL) procDup(proc);
+	mutexUnlock(&procTableLock);
+
+	return proc;
+};
+
+Process* procDup(Process *proc)
+{
+	__sync_add_and_fetch(&proc->refcount, 1);
+	return proc;
+};
+
+File* procFileGet(int fd)
+{
+	if (fd < 0 || fd >= PROC_MAX_OPEN_FILES)
+	{
+		return NULL;
+	};
+
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	File *fp = me->fileTable[fd].fp;
+	if (fp != NULL && fp != PROC_FILE_RESV) vfsDup(fp);
+
+	mutexUnlock(&me->fileTableLock);
+
+	if (fp == PROC_FILE_RESV) return NULL;
+	else return fp;
+};
+
+int procFileResv()
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		FileTableEntry *ent = &me->fileTable[fd];
+		if (ent->fp == NULL)
+		{
+			ent->fp = PROC_FILE_RESV;
+			break;
+		};
+	};
+
+	mutexUnlock(&me->fileTableLock);
+
+	if (fd == PROC_MAX_OPEN_FILES) return -1;
+	else return fd;
+};
+
+void procFileSet(int fd, File *fp, int cloexec)
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+	
+	FileTableEntry *ent = &me->fileTable[fd];
+	if (ent->fp != PROC_FILE_RESV)
+	{
+		panic("procFileSet() called on a non-reserved descriptor! This is an internal bug!");
+	};
+
+	ent->fp = vfsDup(fp);
+	ent->cloexec = cloexec;
+	
+	mutexUnlock(&me->fileTableLock);
+};
+
+int procFileDupInto(int newfd, File *fp, int cloexec)
+{
+	if (newfd < 0 || newfd >= PROC_MAX_OPEN_FILES)
+	{
+		return -EBADF;
+	};
+
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	FileTableEntry *ent = &me->fileTable[newfd];
+	if (ent->fp == PROC_FILE_RESV)
+	{
+		mutexUnlock(&me->fileTableLock);
+		return -EBUSY;
+	};
+
+	if (ent->fp != NULL)
+	{
+		vfsClose(ent->fp);
+	};
+
+	ent->fp = vfsDup(fp);
+	ent->cloexec = cloexec;
+
+	mutexUnlock(&me->fileTableLock);
+	return newfd;
+};
+
+int procFileClose(int fd)
+{
+	Process *me = schedGetCurrentThread()->proc;
+	mutexLock(&me->fileTableLock);
+
+	FileTableEntry *ent = &me->fileTable[fd];
+	File *old = ent->fp;
+
+	ent->fp = NULL;
+	ent->cloexec = 0;
+	mutexUnlock(&me->fileTableLock);
+
+	if (old == NULL)
+	{
+		return -EBADF;
+	};
+
+	return 0;
+};
+
+/**
+ * This is called from `procExit()` to walk through the process table, `context_` being the process
+ * exiting, and any process who has the exiting process as a parent, will have the parent PID set to
+ * 1 (init).
+ */
+static void _procOrphaneChildrenCallback(TreeMap *tm, uint32_t index, void *value_, void *context_)
+{
+	Process *parent = (Process*) context_;
+	Process *child = (Process*) value_;
+
+	if (child->parent == parent->pid)
+	{
+		child->parent = 1;
+	};
+};
+
+noreturn void procExit(int wstatus)
+{
+	Thread *thread = schedGetCurrentThread();
+	Process *proc = thread->proc;
+
+	ksiginfo_t si;
+	memset(&si, 0, sizeof(ksiginfo_t));
+	si.si_signo = SIGCHLD;
+	si.si_pid = proc->pid;
+	si.si_uid = proc->ruid;
+	si.si_code = CLD_EXITED;
+
+	if (proc->pid == 1)
+	{
+		panic("The init process attempted to exit, with wstatus=0x%x!", wstatus);
+	};
+
+	if (proc->numThreads > 1)
+	{
+		panic("TODO: i don't know how to kill other threads yet!");
+	};
+
+	// close all file descriptors
+	int fd;
+	for (fd=0; fd<PROC_MAX_OPEN_FILES; fd++)
+	{
+		procFileClose(fd);
+	};
+
+	// remove the calling thread (us) from the process' thread table
+	mutexLock(&proc->threadTableLock);
+	treemapSet(proc->threads, thread->thid, NULL);
+	mutexUnlock(&proc->threadTableLock);
+
+	// detach us from the process, and ensure that we don't continue using the page table
+	cli();
+	thread->proc = NULL;
+	pagetabSetCR3(cpuGetCurrent()->kernelCR3);
+	sti();
+
+	// with the process table lock held, orphane the children and inform the parent about us
+	mutexLock(&procTableLock);
+	proc->wstatus = wstatus;
+	proc->terminated = 1;
+	treemapWalk(procTable, _procOrphaneChildrenCallback, proc);
+	Process *parent = (Process*) treemapGet(procTable, proc->parent);
+	ASSERT(parent != NULL);
+
+	// if the parent explicitly ignores SIGCHLD or has set SA_NOCLDWAIT on its signal
+	// disposition, we inform init (pid 1) instead
+	SigAction *sigchldAction = &parent->sigActions[SIGCHLD];
+	if (sigchldAction->sa_sigaction_handler == SIG_IGN || sigchldAction->sa_flags & SA_NOCLDWAIT)
+	{
+		parent = treemapGet(procTable, 1);
+		ASSERT(parent != NULL);
+	};
+
+	if (parent->childWaiter != NULL) schedWake(parent->childWaiter);
+	schedDeliverSignalToProc(parent, &si);
+	mutexUnlock(&procTableLock);
+
+	// exit from this thread
+	schedDetachKernelThread(thread);
+	schedExitThread();
+};
+
+static void _procWaitWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	ProcWaitContext *ctx = (ProcWaitContext*) context_;
+
+	if (ctx->result > 0)
+	{
+		return;
+	};
+
+	if (proc->parent == ctx->parent)
+	{
+		if (proc->pid == ctx->pid || ctx->pid == -1 || proc->pgid == -ctx->pid
+			|| (ctx->pid == 0 && proc->pgid == ctx->parentPGID))
+		{
+			if (ctx->result == -ECHILD)
+			{
+				ctx->result = 0;
+			};
+
+			if (proc->terminated)
+			{
+				ctx->wstatus = proc->wstatus;
+				ctx->result = proc->pid;
+				ctx->child = proc;
+				treemapSet(tm, proc->pid, NULL);
+			};
+		};
+	};
+};
+
+pid_t procWait(pid_t pid, int *wstatus, int flags)
+{
+	if ((flags & PROC_WALL) != flags)
+	{
+		// invalid flags were set
+		return -EINVAL;
+	};
+
+	Thread *thread = schedGetCurrentThread();
+	Process *proc = thread->proc;
+
+	ProcWaitContext ctx;
+	ctx.pid = pid;
+	ctx.parent = proc->pid;
+	ctx.child = NULL;
+	ctx.wstatus = 0;
+	ctx.parentPGID = proc->pgid;
+
+	mutexLock(&procTableLock);
+	while (1)
+	{
+		if (proc->childWaiter == NULL)
+		{
+			proc->childWaiter = thread;
+		};
+
+		ctx.result = -ECHILD;
+		treemapWalk(procTable, _procWaitWalkCallback, &ctx);
+		
+		if (ctx.result != 0)
+		{
+			break;
+		};
+
+		if (flags & PROC_WNOHANG)
+		{
+			break;
+		};
+
+		mutexUnlock(&procTableLock);
+		schedSuspend();
+
+		mutexLock(&procTableLock);
+		if (schedHaveReadySigs())
+		{
+			ctx.result = -EINTR;
+			break;
+		};
+	};
+
+	if (proc->childWaiter == thread)
+	{
+		proc->childWaiter = NULL;
+	};
+
+	mutexUnlock(&procTableLock);
+	if (ctx.child != NULL) procUnref(ctx.child);
+	if (wstatus != NULL) *wstatus = ctx.wstatus;
+	return ctx.result;
+};
+
+static void _procWakeThreadsWalkCallback(TreeMap *map, uint32_t thid, void *th_, void *context_)
+{
+	Thread *thread = (Thread*) th_;
+	schedWake(thread);
+};
+
+void procWakeThreads(Process *proc)
+{
+	mutexLock(&proc->threadTableLock);
+	treemapWalk(proc->threads, _procWakeThreadsWalkCallback, NULL);
+	mutexUnlock(&proc->threadTableLock);
+};
+
+static void _procFindGroupWalkCallback(TreeMap *tm, uint32_t pid, void *value_, void *context_)
+{
+	int *resultOut = (int*) context_;
+	Process *proc = (Process*) value_;
+
+	if (proc->pgid == schedGetCurrentThread()->proc->pid)
+	{
+		*resultOut = 1;
+	};
+};
+
+int procSetSessionID()
+{
+	Process *me = schedGetCurrentThread()->proc;
+	if (me->pid == 1)
+	{
+		// init is not allowed to have a session
+		return -EPERM;
+	};
+
+	mutexLock(&procTableLock);
+	
+	// see if any process belongs to the group of which we are the leader
+	int foundConflict = 0;
+	treemapWalk(procTable, _procFindGroupWalkCallback, &foundConflict);
+
+	if (foundConflict)
+	{
+		// not allowed
+		mutexUnlock(&procTableLock);
+		return -EPERM;
+	};
+
+	// we can do it
+	me->sid = me->pgid = me->pid;
+
+	mutexUnlock(&procTableLock);
+	return 0;
+};
+
+static void _procGetSessionWalkCallback(TreeMap *treemap, uint32_t pid, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	ProcessGroupSessionWalkContext *ctx = (ProcessGroupSessionWalkContext*) context_;
+
+	if (proc->pgid == ctx->pgid)
+	{
+		ctx->sid = proc->sid;
+	};
+};
+
+int procSetProcessGroup(pid_t pid, pid_t pgid)
+{
+	if (pid < 0)
+	{
+		return -EINVAL;
+	};
+
+	if (pid == 0)
+	{
+		pid = schedGetCurrentThread()->proc->pid;
+	};
+
+	if (pid == 1)
+	{
+		// cannot change the process group of init
+		return -EPERM;
+	};
+
+	if (pgid < 0)
+	{
+		return -EINVAL;
+	};
+
+	if (pgid == 0)
+	{
+		pgid = pid;
+	};
+
+	mutexLock(&procTableLock);
+
+	ProcessGroupSessionWalkContext ctx;
+	ctx.pgid = pgid;
+	ctx.sid = 0;
+
+	Process *target = treemapGet(procTable, pid);
+	pid_t myPID = schedGetCurrentThread()->proc->pid;
+	if (target == NULL || (target->pid != myPID && target->parent != myPID))
+	{
+		mutexUnlock(&procTableLock);
+		return -ESRCH;
+	};
+
+	treemapWalk(procTable, _procGetSessionWalkCallback, &ctx);
+	if (ctx.sid != target->sid || target->pid == target->sid)
+	{
+		mutexUnlock(&procTableLock);
+		return -EPERM;
+	};
+
+	target->pgid = pgid;
+	mutexUnlock(&procTableLock);
+
+	return 0;
+};
+
+static void _procKillWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, void *context_)
+{
+	Process *proc = (Process*) value_;
+	KillWalkContext *ctx = (KillWalkContext*) context_;
+	Process *me = schedGetCurrentThread()->proc;
+
+	if (proc->pid == ctx->pid || ctx->pid == -1 || proc->pgid == -ctx->pid
+		|| (ctx->pid == 0 && proc->pgid == me->pgid))
+	{
+		int permitted = me->euid == 0 || me->ruid == 0 || me->ruid == proc->ruid || me->euid == proc->ruid;
+		if (ctx->status == -ESRCH)
+		{
+			ctx->status = permitted ? 0 : -EPERM;
+		};
+
+		if (permitted)
+		{
+			ksiginfo_t si;
+			memset(&si, 0, sizeof(ksiginfo_t));
+
+			si.si_signo = ctx->signo;
+			si.si_code = SI_USER;
+			si.si_pid = me->pid;
+			si.si_uid = me->ruid;
+
+			schedDeliverSignalToProc(proc, &si);
+		};
+	};
+};
+
+int procKill(pid_t pid, int signo)
+{
+	if (signo < 1 || signo >= SIG_NUM)
+	{
+		return -EINVAL;
+	};
+
+	mutexLock(&procTableLock);
+
+	KillWalkContext ctx;
+	ctx.pid = pid;
+	ctx.signo = signo;
+	ctx.status = -ESRCH;
+
+	treemapWalk(procTable, _procKillWalkCallback, &ctx);
+
+	mutexUnlock(&procTableLock);
+	return ctx.status;
 };

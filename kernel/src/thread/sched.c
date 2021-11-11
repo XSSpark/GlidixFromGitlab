@@ -252,7 +252,7 @@ noreturn void _schedNext(void *stack)
 			}
 			else
 			{
-				pagetabGetCR3(cpu->kernelCR3);
+				pagetabSetCR3(cpu->kernelCR3);
 			};
 			
 			// set the FSBASE
@@ -434,7 +434,7 @@ void schedDetachKernelThread(Thread *thread)
 		if (schedDetHead != NULL) schedDetHead->detPrev = thread;
 		schedDetHead = thread;
 		
-		// ensure the cleanup that is woken up when this exits
+		// ensure the cleanup thread is woken up when this exits
 		thread->joiner = schedGlobalCleanupThread;
 		spinlockRelease(&schedLock, irqState);
 	};
@@ -530,7 +530,7 @@ void schedSetFSBase(uint64_t fsbase)
 
 int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
 {
-	if (signum < 1 || signum >= SIG_NUM || signum == SIGKILL || signum == SIGSTOP || signum == SIGTHKILL)
+	if (signum < 1 || signum >= SIG_NUM)
 	{
 		return -EINVAL;
 	};
@@ -543,7 +543,7 @@ int schedSigAction(int signum, const SigAction *act, SigAction *oldact)
 		memcpy(oldact, &proc->sigActions[signum], sizeof(SigAction));
 	};
 
-	if (act != NULL)
+	if (act != NULL && signum != SIGKILL && signum != SIGSTOP && signum != SIGTHKILL)
 	{
 		memcpy(&proc->sigActions[signum], act, sizeof(SigAction));
 	};
@@ -608,9 +608,14 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		// ignore
 		return;
 	}
+	else if (handler < 256 && schedGetCurrentThread()->proc->pid == 1)
+	{
+		// ignore any signals for init that it doesn't explicitly handle
+		return;
+	}
 	else if (handler == SIG_TERM || handler == SIG_CORE)
 	{
-		panic("TODO: implement terminating");
+		procExit(PROC_WS_SIG(siginfo->si_signo));
 	}
 	else if (handler == SIG_STOP)
 	{
@@ -622,14 +627,14 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		user_addr_t gprAddr = gprs->rsp - sizeof(kmcontext_gpr_t) - 128;
 		if (procToUserCopy(gprAddr, gprs, sizeof(kmcontext_gpr_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// put the signal info on the stack
 		user_addr_t siginfoAddr = (gprAddr - sizeof(ksiginfo_t)) & ~0x7;
 		if (procToUserCopy(siginfoAddr, siginfo, sizeof(ksiginfo_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// now create the `ucontext_t`, ensuring it is 16-bytes-aligned (required for the
@@ -644,7 +649,7 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 
 		if (procToUserCopy(contextAddr, &ucontext, sizeof(kucontext_t)) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// mask the signals specified by the action
@@ -655,10 +660,77 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		uint64_t retAddr = (uint64_t) (userAuxSigReturn);
 		if (procToUserCopy(rsp, &retAddr, 8) != 0)
 		{
-			panic("TODO: handle failure to copy");
+			procExit(PROC_WS_SIG(SIGKILL));
 		};
 
 		// enter the handler
 		_schedEnterSignalHandler(siginfo->si_signo, siginfoAddr, contextAddr, handler);
 	};
+};
+
+int schedCheckSignals(ksiginfo_t *si)
+{
+	Thread *me = schedGetCurrentThread();
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t pending = me->sigPending;
+	if (me->proc != NULL) pending |= me->proc->sigPending;
+
+	ksigset_t ready = pending & ~me->sigBlocked;
+	int i;
+	for (i=1; i<SIG_NUM; i++)
+	{
+		if (ready & (1UL << i))
+		{
+			if (me->proc != NULL)
+			{
+				if (me->proc->sigPending & (1UL << i))
+				{
+					memcpy(si, &me->proc->sigInfo[i], sizeof(ksiginfo_t));
+					me->proc->sigPending &= ~(1UL << i);
+					spinlockRelease(&schedLock, irqState);
+					return 0;
+				};
+			};
+
+			if (me->sigPending & (1UL << i))
+			{
+				memcpy(si, &me->sigInfo[i], sizeof(ksiginfo_t));
+				me->sigPending &= ~(1UL << i);
+				spinlockRelease(&schedLock, irqState);
+				return 0;
+			};
+		};
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	return -1;
+};
+
+void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si)
+{
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t mask = (1UL << si->si_signo);
+	SigAction *act = &proc->sigActions[si->si_signo];
+	user_addr_t handler = act->sa_sigaction_handler;
+	if (handler == SIG_DFL) handler = schedGetDefaultSignalAction(si->si_signo);
+	if (handler == SIG_IGN)
+	{
+		// the signal is ignored, so there's no need to deliver it
+		spinlockRelease(&schedLock, irqState);
+		return;
+	};
+
+	// not ignored, so deliver unless already there
+	int signalled = 0;
+	if ((proc->sigPending & mask) == 0)
+	{
+		memcpy(&proc->sigInfo[si->si_signo], si, sizeof(ksiginfo_t));
+		proc->sigPending |= mask;
+		signalled = 1;
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	if (signalled) cpuInformProcSignalled(proc);
 };

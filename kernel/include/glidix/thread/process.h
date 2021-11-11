@@ -34,6 +34,7 @@
 #include <glidix/fs/path.h>
 #include <glidix/fs/file.h>
 #include <glidix/int/signal.h>
+#include <glidix/thread/semaphore.h>
 
 /**
  * The kernel init action for initialising the process table and starting `init`.
@@ -53,6 +54,37 @@
  * tree must change if we want to make this longer.
  */
 #define	PROC_USER_ADDR_MAX					(1UL << 44)
+
+/**
+ * Maximum number of open file descriptors allowed in a process.
+ */
+#define	PROC_MAX_OPEN_FILES					256
+
+/**
+ * Maximum size of user strings.
+ */
+#define	PROC_USER_STRING_SIZE					0x2000
+
+/**
+ * "Reserved" file pointer.
+ */
+#define	PROC_FILE_RESV						((File*)1)
+
+/**
+ * For manipulating the 'waitstatus' value.
+ */
+#define	PROC_WS_EXIT(ret)					(((ret) & 0xFF) << 8)	/* normal exit with status 'ret' */
+#define	PROC_WS_SIG(sig)					(sig)			/* terminated by signal 'sig' */
+#define	PROC_WS_CORE						(1 << 7)		/* bitwise-OR to set "core dumped" */
+
+/**
+ * Process wait flags.
+ */
+#define	PROC_WNOHANG						(1 << 0)
+#define	PROC_WDETACH						(1 << 1)
+#define	PROC_WUNTRACED						(1 << 2)
+#define	PROC_WCONTINUED						(1 << 3)
+#define	PROC_WALL						((1 << 4)-1)
 
 /**
  * Protection settings.
@@ -149,6 +181,22 @@ typedef struct
 } ProcessMapping;
 
 /**
+ * Entry in the file table.
+ */
+typedef struct
+{
+	/**
+	 * The file description, or NULL if there isn't one here.
+	 */
+	File *fp;
+
+	/**
+	 * If nonzero, close this file on exec.
+	 */
+	int cloexec;
+} FileTableEntry;
+
+/**
  * Represents a process (a collection of userspace threads sharing a single address space).
  */
 struct Process_
@@ -174,7 +222,8 @@ struct Process_
 	Mutex mapLock;
 
 	/**
-	 * Parent process ID.
+	 * Parent process ID. Note that this may change to 1 once the parent terminates. The
+	 * change is protected by `procTableLock`.
 	 */
 	pid_t parent;
 
@@ -244,7 +293,146 @@ struct Process_
 	 * Number of threads running.
 	 */
 	int numThreads;
+
+	/**
+	 * Mutex protecting the file table.
+	 */
+	Mutex fileTableLock;
+
+	/**
+	 * The file table.
+	 */
+	FileTableEntry fileTable[PROC_MAX_OPEN_FILES];
+
+	/**
+	 * Process wait status.
+	 */
+	int wstatus;
+
+	/**
+	 * Set to 1 once the process terminates.
+	 */
+	int terminated;
+
+	/**
+	 * The thread currently blocking in `waitpid()`. This is protected by the
+	 * process table lock.
+	 */
+	Thread *childWaiter;
+
+	/**
+	 * Session ID. Protected by the process table lock.
+	 */
+	pid_t sid;
+
+	/**
+	 * Process group ID. Protected by the process table lock.
+	 */
+	pid_t pgid;
 };
+
+/**
+ * Context of child reaping.
+ */
+typedef struct
+{
+	/**
+	 * The `pid` passed to `waitpid`.
+	 */
+	pid_t pid;
+
+	/**
+	 * Result. This is initialised to `-ECHILD`. If a child is found but not yet
+	 * terminated, this gets set to 0. If a child is reaped, this is set to its
+	 * PID.
+	 */
+	pid_t result;
+
+	/**
+	 * The parent pid (i.e. the process looking for children).
+	 */
+	pid_t parent;
+
+	/**
+	 * The parent PGID.
+	 */
+	pid_t parentPGID;
+
+	/**
+	 * Wait status to return.
+	 */
+	int wstatus;
+
+	/**
+	 * The child (must be unreffered if found).
+	 */
+	Process *child;
+} ProcWaitContext;
+
+/**
+ * Context of page cloning.
+ */
+typedef struct
+{
+	/**
+	 * The parent process (the current process).
+	 */
+	Process *parent;
+
+	/**
+	 * The mapping tree of the child.
+	 */
+	TreeMap *childTree;
+
+	/**
+	 * The child PML4.
+	 */
+	void *childPageTable;
+
+	/**
+	 * Initially set to 0, set to an error number if one occurs.
+	 */
+	errno_t err;
+} PageCloneContext;
+
+/**
+ * Walk context for getting the session ID for a process group ID.
+ */
+typedef struct
+{
+	/**
+	 * The process group ID.
+	 */
+	pid_t pgid;
+
+	/**
+	 * Initialized to 0, set to a session ID if one is found.
+	 */
+	pid_t sid;
+} ProcessGroupSessionWalkContext;
+
+/**
+ * Walk context for `procKill()`.
+ */
+typedef struct
+{
+	/**
+	 * The PID specified in the kill.
+	 */
+	pid_t pid;
+
+	/**
+	 * The signal to send.
+	 */
+	int signo;
+
+	/**
+	 * The status. Initially this is set to `-ESRCH`. If any target process is found,
+	 * but permission was not granted, then this gets set to `-EPERM`. If a signal is
+	 * delivered, this is set to 0.
+	 */
+	int status;
+} KillWalkContext;
 
 /**
  * Create a new process.
@@ -313,9 +501,92 @@ int procPageFault(user_addr_t addr, int faultFlags, ksiginfo_t *siginfo);
 int procToKernelCopy(void *ptr, user_addr_t addr, size_t size);
 
 /**
+ * Copy into kernel memory, from userspace address `addr`, a string. `buffer` must be of size `PROC_USER_STRING_SIZE`.
+ * Returns 0 on success (and `buffer` is filled with a valid string ending in NUL), or a negated error number
+ * if the read was not possible. Returns `-EFAULT` if an invalid memory access would have happened, `-EOVERFLOW`
+ * if the string is too long.
+ */
+int procReadUserString(char *buffer, user_addr_t addr);
+
+/**
  * Copy into user memory, from the kernel pointer. Returns 0 on success, or a negated error number (probably
  * `-EFAULT`) if the copy was not possible.
  */
 int procToUserCopy(user_addr_t addr, const void *ptr, size_t size);
+
+/**
+ * Get (and upref) a process given a pid. Returns NULL if no such process exists. Remember to call `procUnref()`
+ * on the returned handle later.
+ */
+Process* procByPID(pid_t pid);
+
+/**
+ * Increment the reference count of the process, and return it again.
+ */
+Process* procDup(Process *proc);
+
+/**
+ * Get the file description with the specified descriptor. The reference count will be incremented, so you must
+ * call `vfsClose()` on the descriptor later. Returns NULL if the descriptor is not valid.
+ */
+File* procFileGet(int fd);
+
+/**
+ * Reserve a file descriptor and return it. Returns -1 if there are no free descriptors. Call `procFileSet()` and
+ * set the descriptor to either a valid description or NULL later.
+ */
+int procFileResv();
+
+/**
+ * Set the value of a file descriptor previously reserved with `procFileResv()`. `fp` must either be a valid file
+ * description, or NULL. This function takes its own reference to `fp`. If `fd` currently
+ */
+void procFileSet(int fd, File *fp, int cloexec);
+
+/**
+ * Duplicate the file description into descriptor `newfd`. Returns `newfd` on success, or a negated error number on error.
+ * If `newfd` already refers to a file, that file is closed (unrefed). This function takes its own reference to `fp`,
+ * if successful.
+ */
+int procFileDupInto(int newfd, File *fp, int cloexec);
+
+/**
+ * Close a file descriptor. Returns 0 on success, or a negated error number on error.
+ */
+int procFileClose(int fd);
+
+/**
+ * Exit the current process with the specified waitstatus. Use `PROC_WS_*()` macros to form the wait status.
+ */
+noreturn void procExit(int wstatus);
+
+/**
+ * Wait for a child process to terminate, and returns its PID. If `wstatus` is not NULL, then the child's wait
+ * status is stored there on success. On error, a negated error number is returned.
+ */
+pid_t procWait(pid_t pid, int *wstatus, int flags);
+
+/**
+ * Inform the threads in a process that a signal was received.
+ */
+void procWakeThreads(Process *proc);
+
+/**
+ * Create a new session by setting the SID and PGID of the calling process to its own PID. Returns 0 on success,
+ * or a negated error number on error.
+ */
+int procSetSessionID();
+
+/**
+ * Set the process group ID of `pid` to `pgid`. If `pid` is 0, the calling process is used. If `pgid` is 0, then
+ * the process group ID will be the PID of the target process. The new process group for the process must be in
+ * the same session as the target process. Returns 0 on success, or a negated error number on error.
+ */
+int procSetProcessGroup(pid_t pid, pid_t pgid);
+
+/**
+ * Send a signal to a process or processes. Returns 0 on success, or a negated error number on error.
+ */
+int procKill(pid_t pid, int signo);
 
 #endif

@@ -32,8 +32,25 @@
 #include <glidix/util/log.h>
 #include <glidix/util/panic.h>
 #include <glidix/util/string.h>
+#include <glidix/display/console.h>
 
 SECTION(".initrd") uint8_t initrdImage[32*1024*1024];
+
+static ssize_t initrdConsolePRead(Inode *inode, void *buffer, size_t size, off_t pos)
+{
+	return 0;
+};
+
+static ssize_t initrdConsolePWrite(Inode *inode, const void *buffer, size_t size, off_t pos)
+{
+	conWrite(buffer, size);
+	return size;
+};
+
+static InodeOps initrdConsoleOps = {
+	.pread = initrdConsolePRead,
+	.pwrite = initrdConsolePWrite,
+};
 
 static uint64_t parseOct(const char *data)
 {
@@ -47,6 +64,12 @@ static uint64_t parseOct(const char *data)
 
 static void initrdInit(KernelBootInfo *info)
 {
+	kprintf("initrd: Creating the /initrd-console file...\n");
+	if (vfsCreateCharDev(NULL, "/initrd-console", 0644, &initrdConsoleOps) != 0)
+	{
+		panic("Failed to create /initrd-console!");
+	};
+
 	kprintf("initrd: Unpacking the initrd...\n");
 	if (vfsCreateDirectory(NULL, "/initrd", 0755) != 0)
 	{

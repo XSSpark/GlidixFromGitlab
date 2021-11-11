@@ -49,6 +49,7 @@ isrCommon:
 	mov			ax, 0x10
 	mov			ds, ax
 	mov			es, ax
+	mov			ss, ax
 
 	mov			rdi, rsp		; pass a pointer to registers as argument to isrHandler
 	mov			rbx, rsp		; save the RSP (RBX is preserved, remember).

@@ -294,4 +294,15 @@ ksigset_t schedGetSigMask();
  */
 void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *siginfo);
 
+/**
+ * If there are any unblocked, pending signals for the current thread/process, remove an arbitrary signal from
+ * the pending set, fill in `si` with it, and return 0. Otherwise, return -1.
+ */
+int schedCheckSignals(ksiginfo_t *si);
+
+/**
+ * Deliver a signal to a process.
+ */
+void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si);
+
 #endif

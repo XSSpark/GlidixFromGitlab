@@ -47,7 +47,7 @@ GDT64:                               ; Global Descriptor Table (64-bit).
 	dw 0                         ; Limit (low).
 	dw 0                         ; Base (low).
 	db 0                         ; Base (middle)
-	db 10010000b                 ; Access.
+	db 10010010b                 ; Access.
 	db 00000000b                 ; Granularity.
 	db 0                         ; Base (high).
 	.UserCode: equ $ - GDT64

@@ -450,13 +450,94 @@ int vfsCreateDirectory(File *fp, const char *path, mode_t mode)
 	};
 };
 
-struct File_* vfsOpen(struct File_ *start, const char *path, int oflags, mode_t mode, errno_t *err)
+int vfsCreateCharDev(File *start, const char *path, mode_t mode, InodeOps *ops)
+{
+	char *dirname = vfsDirName(path);
+	if (dirname == NULL)
+	{
+		return -ENOMEM;
+	};
+
+	char *basename = vfsBaseName(path);
+	if (basename == NULL)
+	{
+		kfree(dirname);
+		return -ENOMEM;
+	};
+
+	PathWalker walker;
+	if (start == NULL)
+	{
+		walker = vfsPathWalkerGetCurrentDir();
+	}
+	else
+	{
+		walker = vfsPathWalkerDup(&start->walker);
+	};
+
+	int status = vfsWalk(&walker, dirname);
+	kfree(dirname);
+
+	if (status != 0)
+	{
+		vfsPathWalkerDestroy(&walker);
+		kfree(basename);
+		return status;
+	};
+
+	Inode *parent = vfsInodeDup(walker.current);
+	vfsPathWalkerDestroy(&walker);
+
+	if (!vfsInodeAccess(parent, VFS_ACCESS_WRITE | VFS_ACCESS_EXEC))
+	{
+		vfsInodeUnref(parent);
+		kfree(basename);
+		return -EACCES;
+	};
+
+	errno_t err;
+	Inode *child = vfsCreateChildNode(parent, basename, (mode & ~vfsGetCurrentUmask() & 0777) | VFS_MODE_CHARDEV, &err);
+	kfree(basename);
+	vfsInodeUnref(parent);
+
+	if (child == NULL)
+	{
+		return -err;
+	}
+	else
+	{
+		child->ops = ops;
+		vfsInodeUnref(child);
+		return 0;
+	};
+};
+
+struct File_* vfsOpen(File *start, const char *path, int oflags, mode_t mode, errno_t *err)
 {
 	if ((oflags & O_RDWR) == 0)
 	{
 		// neither the read nor the write flag was set
 		if (err != NULL) *err = EINVAL;
 		return NULL;
+	};
+
+	if ((oflags & O_ALL) != oflags)
+	{
+		// an unknown flag was set
+		if (err != NULL) *err = EINVAL;
+		return NULL;
+	};
+
+	if (oflags & O_TRUNC)
+	{
+		if ((oflags & O_WRONLY) == 0)
+		{
+			// cannot truncate if we are not opening in write mode
+			if (err != NULL) *err = EINVAL;
+			return NULL;
+		};
+
+		panic("TODO: support O_TRUNC");
 	};
 
 	char *dirname = vfsDirName(path);
