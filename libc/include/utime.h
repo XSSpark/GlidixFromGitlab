@@ -42,7 +42,7 @@ struct utimbuf
 extern "C" {
 #endif
 
-/* implemented by the runtime */
+
 int utime(const char *pathname, const struct utimbuf *times);
 
 #ifdef __cplusplus

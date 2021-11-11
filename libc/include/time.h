@@ -69,7 +69,7 @@ extern char* tzname[];
 extern long int timezone;
 extern int daylight;
 
-/* implemented by the runtime */
+
 time_t		time(time_t*);
 char*		asctime(const struct tm *timeptr);
 char*		asctime_r(const struct tm *timeptr, char *result);

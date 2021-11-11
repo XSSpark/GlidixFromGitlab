@@ -196,7 +196,7 @@ typedef struct
 extern "C" {
 #endif
 
-/* implemented by the runtime */
+
 int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 void (*signal(int sig, void (*func)(int)))(int);
 int sigemptyset(sigset_t *set);

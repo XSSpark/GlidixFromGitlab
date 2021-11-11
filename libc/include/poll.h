@@ -48,7 +48,7 @@ struct pollfd
 	short int				revents;
 };
 
-/* implemented by the runtime */
+
 int poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
 #ifdef __cplusplus

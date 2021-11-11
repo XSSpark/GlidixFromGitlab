@@ -60,7 +60,7 @@ typedef struct
 	long long			rem;
 } lldiv_t;
 
-/* implemented by the runtime */
+
 void			abort(void);
 int			atexit(void (*)(void));
 int			atoi(const char*);

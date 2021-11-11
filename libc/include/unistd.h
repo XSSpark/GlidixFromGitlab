@@ -77,7 +77,7 @@ extern "C" {
 extern char* optarg;
 extern int optind, opterr, optopt;
 
-/* implemented by the runtime */
+
 int		execv(const char*, char* const[]);
 int		execve(const char*, char* const[], char* const[]);
 int		execvp(const char*, char* const[]);

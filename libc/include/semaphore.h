@@ -46,7 +46,7 @@ typedef struct
 	volatile int64_t					__value;
 } sem_t;
 
-/* implemented by the runtime */
+
 int	sem_init(sem_t *sem, int pshared, unsigned value);
 int	sem_destroy(sem_t *sem);
 int	sem_wait(sem_t *sem);

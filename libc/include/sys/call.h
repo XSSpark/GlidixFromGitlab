@@ -31,7 +31,25 @@
 
 #include <inttypes.h>
 
-#define __SYS_exit				0
+#define __SYS_exit							0
+#define	__SYS_sigaction							1
+#define	__SYS_sigmask							2
+#define	__SYS_fork							3
+#define	__SYS_openat							4
+#define	__SYS_close							5
+#define	__SYS_read							6
+#define	__SYS_write							7
+#define	__SYS_pread							8
+#define	__SYS_pwrite							9
+#define	__SYS_getpid							10
+#define	__SYS_getppid							11
+#define	__SYS_waitpid							12
+#define	__SYS_setsid							13
+#define	__SYS_getsid							14
+#define	__SYS_setpgid							15
+#define	__SYS_getpgrp							16
+#define	__SYS_kill							17
+#define	__SYS_dup3							18
 
 #ifdef __cplusplus
 extern "C" {

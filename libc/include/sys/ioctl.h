@@ -36,7 +36,7 @@
 extern "C" {
 #endif
 
-/* implemented by the runtime */
+
 int ioctl(int fd, unsigned long cmd, ...);
 
 #define	pathctl	_glidix_pathctl

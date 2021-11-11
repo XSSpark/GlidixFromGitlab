@@ -112,7 +112,7 @@ int		pthread_detach(pthread_t thread);
 int		pthread_kill(pthread_t thread, int sig);
 void		pthread_exit(void *retval);
 
-/* implemented by the runtime */
+
 int		pthread_attr_init(pthread_attr_t *attr);
 int		pthread_attr_destroy(pthread_attr_t *attr);
 int		pthread_attr_setscope(pthread_attr_t *attr, int scope);

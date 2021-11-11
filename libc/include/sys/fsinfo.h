@@ -56,7 +56,7 @@ struct __fsinfo_record
 	char					__mntpoint[256];
 };
 
-/* implemented by the runtime */
+
 size_t _glidix_fsinfo(struct fsinfo *list, size_t count);
 
 #ifdef __cplusplus
