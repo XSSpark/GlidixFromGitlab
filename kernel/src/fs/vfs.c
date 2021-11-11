@@ -528,6 +528,18 @@ struct File_* vfsOpen(File *start, const char *path, int oflags, mode_t mode, er
 		return NULL;
 	};
 
+	if (oflags & O_TRUNC)
+	{
+		if ((oflags & O_WRONLY) == 0)
+		{
+			// cannot truncate if we are not opening in write mode
+			if (err != NULL) *err = EINVAL;
+			return NULL;
+		};
+
+		panic("TODO: support O_TRUNC");
+	};
+
 	char *dirname = vfsDirName(path);
 	if (dirname == NULL)
 	{
