@@ -80,7 +80,7 @@ FILE *popen(const char *cmd, const char *mode)
 			close(1);
 			close(2);
 			dup2(pipefd[1], 1);
-			dup2(pipefd[2], 2);
+			dup2(pipefd[1], 2);
 		}
 		else
 		{

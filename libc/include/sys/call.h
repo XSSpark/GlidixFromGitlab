@@ -51,6 +51,22 @@
 #define	__SYS_kill							17
 #define	__SYS_dup3							18
 
+// TODO
+#define	__SYS_block_on							255
+#define	__SYS_unblock							255
+#define	__SYS_sockerr							255
+#define	__SYS_utime							255
+#define	__SYS_getdent							255
+#define	__SYS_getktu							255
+#define	__SYS_readlink							255
+#define	__SYS_getcwd							255
+#define	__SYS_fcntl_getfl						255
+#define	__SYS_fcntl_setfl						255
+#define	__SYS_flock_get							255
+#define	__SYS_flock_set							255
+#define	__SYS_mv							255
+#define	__SYS_realpath							255
+
 #ifdef __cplusplus
 extern "C" {
 #endif

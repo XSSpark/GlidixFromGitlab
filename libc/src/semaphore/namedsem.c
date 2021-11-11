@@ -33,15 +33,23 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <stdarg.h>
 
 #define SEMDIR_PREFIX "/run/sem"
 
-sem_t 	*sem_open(const char *name, int oflag, ... )
+sem_t *sem_open(const char *name, int oflag, ...)
 {
-	mode_t mode;
+	mode_t mode = 0;
 	unsigned int value;
 	
-	
+	if (oflag & O_CREAT)
+	{
+		va_list ap;
+		va_start(ap, oflag);
+		mode = va_arg(ap, mode_t);
+		va_end(ap);
+	};
+
 	if (name[0] != '/')
 	{
 		errno = EINVAL;

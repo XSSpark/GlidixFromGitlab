@@ -234,7 +234,7 @@ static char __grp_static_buf[0x1000];
 
 struct group* getgrnam(const char *name)
 {
-	struct group *out;
+	struct group *out = NULL;
 	int status = getgrnam_r(name, &__grp_static, __grp_static_buf, 0x1000, &out);
 	if (status != 0)
 	{

@@ -73,6 +73,30 @@ int putchar(int ch)
 	return fputc(ch, stdout);
 };
 
+static inline uint64_t __double_as_uint64_reintrp(double x)
+{
+	union
+	{
+		double doubleVal;
+		uint64_t uintVal;
+	} convbuf;
+	
+	convbuf.doubleVal = x;
+	return convbuf.uintVal;
+};
+
+static inline double __uint64_as_double_reintrp(uint64_t x)
+{
+	union
+	{
+		double doubleVal;
+		uint64_t uintVal;
+	} convbuf;
+
+	convbuf.uintVal = x;
+	return convbuf.doubleVal;
+};
+
 static int __parse_flag(const char **fmtptr, int *flagptr)
 {
 	switch (**fmtptr)
@@ -384,7 +408,7 @@ static int __printf_conv_fixedfloat(FILE *fp, int flags, int lenmod, int fieldWi
 	{
 		x = va_arg(ap, double);
 	};
-	uint64_t val64 = *((uint64_t*)(&x));
+	uint64_t val64 = __double_as_uint64_reintrp(x);
 	
 	// check for infinity and NaN
 	// (is this the most terrible code i ever wrote?)
@@ -537,7 +561,7 @@ static int __printf_conv_expfloat(FILE *fp, int flags, int lenmod, int fieldWidt
 	{
 		x = va_arg(ap, double);
 	};
-	uint64_t val64 = *((uint64_t*)(&x));
+	uint64_t val64 = __double_as_uint64_reintrp(x);
 	
 	// check for infinity and NaN
 	// (is this the most terrible code i ever wrote?)
@@ -596,7 +620,7 @@ static int __printf_conv_expfloat(FILE *fp, int flags, int lenmod, int fieldWidt
 	};
 	
 	uint64_t absval64 = val64 & ~0x8000000000000000;
-	double absval = *((double*)(&absval64));
+	double absval = __uint64_as_double_reintrp(absval64);
 
 	if (precision == -1)
 	{
@@ -709,7 +733,7 @@ static int __printf_conv_g(FILE *fp, int flags, int lenmod, int fieldWidth, int 
 		x = va_arg(ap, double);
 	};
 	double y = x;
-	uint64_t val64 = *((uint64_t*)(&x));
+	uint64_t val64 = __double_as_uint64_reintrp(x);
 	
 	// check for infinity and NaN
 	// (is this the most terrible code i ever wrote?)
@@ -768,7 +792,7 @@ static int __printf_conv_g(FILE *fp, int flags, int lenmod, int fieldWidth, int 
 	};
 	
 	uint64_t absval64 = val64 & ~0x8000000000000000;
-	double absval = *((double*)(&absval64));
+	double absval = __uint64_as_double_reintrp(absval64);
 	
 	if (precision == -1)
 	{
