@@ -40,11 +40,9 @@ char **environ;
 static int __init_done = 0;
 static int __argc;
 static char **__argv;
-static int __errno_init;
 
 __attribute__ ((constructor)) void __do_init()
 {
-	_glidix_seterrnoptr(&__errno_init);
 	_heap_init();
 
 	// parse the execPars

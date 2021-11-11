@@ -49,9 +49,6 @@ _elfEnter:
 	mov ds, ax
 	mov es, ax
 	
-	xor ax, ax
-	mov fs, ax
-	
 	; zero out the GPRs
 	xor rax, rax
 	xor rbx, rbx

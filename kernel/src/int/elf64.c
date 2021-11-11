@@ -229,6 +229,27 @@ static int elfExecStatic(File *fp, ElfInfo *info, const char **argv, const char 
 		procExit(PROC_WS_SIG(SIGILL));
 	};
 
+	// map the thread block
+	user_addr_t threadBlockBase = procMap(0, PROC_THREAD_BLOCK_SIZE, PROT_READ | PROT_WRITE,
+		MAP_PRIVATE | MAP_ANON, NULL, 0, &err);
+	if (threadBlockBase == MAP_FAILED)
+	{
+		procExit(PROC_WS_SIG(SIGILL));
+	};
+
+	ThreadBlockHeader threadBlockHeader;
+	memset(&threadBlockHeader, 0, sizeof(ThreadBlockHeader));
+	threadBlockHeader.thisBlock = threadBlockBase;
+	threadBlockHeader.stackBase = ELF_USER_STACK_BASE;
+	threadBlockHeader.stackSize = ELF_USER_STACK_SIZE;
+	
+	if (procToUserCopy(threadBlockBase, &threadBlockHeader, sizeof(ThreadBlockHeader)) != 0)
+	{
+		procExit(PROC_WS_SIG(SIGILL));
+	};
+
+	schedSetFSBase(threadBlockBase);
+
 	// initialize the stack
 	user_addr_t rsp = ELF_USER_STACK_BASE + ELF_USER_STACK_SIZE;
 

@@ -33,6 +33,7 @@
 #include <glidix/util/string.h>
 #include <glidix/int/procops.h>
 #include <glidix/int/fileops.h>
+#include <glidix/int/mman.h>
 
 /**
  * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
@@ -59,6 +60,9 @@ void* _sysCallTable[] = {
 	sys_getpgrp,							// 16
 	sys_kill,							// 17
 	sys_dup3,							// 18
+	sys_pthread_self,						// 19
+	sys_raise,							// 20
+	sys_mmap,							// 21
 };
 
 /**

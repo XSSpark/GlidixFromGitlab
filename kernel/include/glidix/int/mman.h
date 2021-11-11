@@ -26,67 +26,16 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef __glidix_int_procops_h
-#define	__glidix_int_procops_h
+#ifndef __glidix_int_mman_h
+#define	__glidix_int_mman_h
 
 #include <glidix/util/common.h>
 #include <glidix/thread/process.h>
 
 /**
- * Fork the current process. Returns 0 to the child, the child's (positive) PID to the
- * parent; or, if an error occured, no process is created, and returns a negated error
- * number.
+ * Implement `sys_mmap()`. This returns a 64-bit negated error number on error, since no
+ * negative address can ever be returned to userspace.
  */
-pid_t sys_fork();
-
-/**
- * Get the PID of the calling process.
- */
-pid_t sys_getpid();
-
-/**
- * Get the parent process ID.
- */
-pid_t sys_getppid();
-
-/**
- * Wait for a child to terminate (implements the `waitpid()` syscall).
- */
-pid_t sys_waitpid(pid_t pid, user_addr_t uwstatus, int flags);
-
-/**
- * Create a new session. Implements the `setsid()` system call.
- */
-int sys_setsid();
-
-/**
- * Get the session ID.
- */
-pid_t sys_getsid();
-
-/**
- * Implements the `setpgid()` system call.
- */
-int sys_setpgid(pid_t pid, pid_t pgid);
-
-/**
- * Get the process group ID of the calling process.
- */
-pid_t sys_getpgrp();
-
-/**
- * Send a signal to a process or processes.
- */
-int sys_kill(pid_t pid, int signo);
-
-/**
- * Get the thread ID of the calling process.
- */
-thid_t sys_pthread_self();
-
-/**
- * Raise a signal. Returns 0 on success, negated error number on error.
- */
-int sys_raise(int signo);
+user_addr_t sys_mmap(user_addr_t addr, size_t length, int prot, int flags, int fd, off_t offset);
 
 #endif

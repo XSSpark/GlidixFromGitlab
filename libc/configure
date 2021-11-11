@@ -43,6 +43,17 @@ macro libc_common
 	cc_srcdir (mbs_srcdir '/src');
 };
 
+macro make_crt_file name
+{
+	makerule (mbs_file ': ' mbs_srcdir '/crt/' name '.s')
+		// first create the directory
+		('@"mkdir" -p $(shell dirname $@)')
+
+		// now generate the object file
+		(as_asm ' -c $< -o $@ ')
+	;
+};
+
 package 'libc' (libc_version)
 {
 	file ('/lib/libc.so')
@@ -70,5 +81,30 @@ package 'libc-dev' (libc_version)
 	file ('/usr/include')
 	{
 		dir_src (mbs_srcdir '/include');
+	};
+
+	file ('/lib/crt0.o')
+	{
+		make_crt_file 'crt0';
+	};
+
+	file ('/lib/crtgui.o')
+	{
+		make_crt_file 'crtgui';
+	};
+
+	file ('/lib/crti.o')
+	{
+		make_crt_file 'crti';
+	};
+
+	file ('/lib/crtn.o')
+	{
+		make_crt_file 'crtn';
+	};
+
+	file ('/lib/crtsinit.o')
+	{
+		make_crt_file 'crtsinit';
 	};
 };

@@ -50,6 +50,9 @@
 #define	__SYS_getpgrp							16
 #define	__SYS_kill							17
 #define	__SYS_dup3							18
+#define	__SYS_pthread_self						19
+#define	__SYS_raise							20
+#define	__SYS_mmap							21
 
 // TODO
 #define	__SYS_block_on							255

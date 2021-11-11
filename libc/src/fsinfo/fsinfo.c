@@ -31,6 +31,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 
 size_t _glidix_fsinfo(struct fsinfo *list, size_t count)
 {

@@ -71,6 +71,11 @@
 #define	PROC_FILE_RESV						((File*)1)
 
 /**
+ * Size of the Thread Block.
+ */
+#define	PROC_THREAD_BLOCK_SIZE					(8 * 1024 * 1024)
+
+/**
  * For manipulating the 'waitstatus' value.
  */
 #define	PROC_WS_EXIT(ret)					(((ret) & 0xFF) << 8)	/* normal exit with status 'ret' */
@@ -114,6 +119,31 @@
  * are NOT to be trusted!
  */
 typedef uint64_t user_addr_t;
+
+/**
+ * The thread block header. Note that this is used by libc and applications, and must maintain
+ * ABI compatibility! The offset to each field is commented.
+ */
+typedef struct
+{
+	/**
+	 * The linear address of this thread block. This is so the user can get it by reading
+	 * from [fs:0].
+	 */
+	user_addr_t thisBlock;						// 0x00
+
+	/**
+	 * Base address of the stack, and its size. This allows the kernel to unmap the stack
+	 * when the thread exits.
+	 */
+	user_addr_t stackBase;						// 0x08
+	size_t stackSize;						// 0x10
+
+	/**
+	 * Error number. This is used by libc to store the per-thread `errno`.
+	 */
+	int errnum;							// 0x18
+} ThreadBlockHeader;
 
 /**
  * Process startup information.

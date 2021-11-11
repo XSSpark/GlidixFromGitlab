@@ -121,3 +121,26 @@ int sys_kill(pid_t pid, int signo)
 {
 	return procKill(pid, signo);
 };
+
+thid_t sys_pthread_self()
+{
+	return schedGetCurrentThread()->thid;
+};
+
+int sys_raise(int signo)
+{
+	if (signo < 1 || signo >= SIG_NUM)
+	{
+		return -EINVAL;
+	};
+
+	ksiginfo_t si;
+	memset(&si, 0, sizeof(ksiginfo_t));
+	si.si_signo = signo;
+	si.si_code = SI_USER;
+	si.si_pid = schedGetCurrentThread()->proc->pid;
+	si.si_uid = schedGetCurrentThread()->proc->ruid;
+
+	sysDispatchSignal(&si, 0);
+	return 0;
+};

@@ -26,6 +26,7 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <sys/glidix.h>
 #include <sys/socket.h>
 #include <sys/call.h>
 #include <sys/time.h>

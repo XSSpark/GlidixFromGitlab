@@ -65,6 +65,9 @@ build gxboot gxboot-build "--host=x86_64-glidix"
 build kernel kernel-build "--host=x86_64-glidix"
 build libc libc-build "--host=x86_64-glidix"
 
+notify "Installing libraries in local sysroot..."
+(cd libc-build && DESTDIR=/glidix make install) || exit 1
+
 notify "Generating kernel symbols..."
 nm kernel-build/kernel/boot/initrd-sysroot/kernel.so | grep " T " | awk '{ print $1" "$3 }' > kernel.sym
 
@@ -80,11 +83,10 @@ rm -rf build-sysroot/usr/src/.git || exit 1
 notify "Installing all packages in image sysroot..."
 (cd gxboot-build && DESTDIR=../build-sysroot make install) || exit 1
 (cd kernel-build && DESTDIR=../build-sysroot make install) || exit 1
+(cd libc-build && DESTDIR=../build-sysroot make install) || exit 1
 
 # TODO: temporary; build init properly later
-nasm $srcdir/init/init.asm -felf64 -o init_asm.o || exit 1
-x86_64-glidix-cc -c $srcdir/init/init.c -o init_c.o || exit 1
-x86_64-glidix-cc init_asm.o init_c.o -o build-sysroot/boot/initrd-sysroot/init -nostdlib -lgcc || exit 1
+x86_64-glidix-cc -static $srcdir/init/init.c -o build-sysroot/boot/initrd-sysroot/init -I$srcdir/libc/include -Llibc-build/libc/lib -Llibc-build/libc-dev/lib || exit 1
 
 notify "Creating the initrd..."
 mkdir -p build-sysroot/boot || exit 1

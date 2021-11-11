@@ -222,8 +222,6 @@ void		_glidix_diag();
 int		_glidix_mount(const char *fsname, const char *image, const char *mountpoint, int flags, const void *options, size_t optlen);
 void		_glidix_yield();
 time_t		_glidix_time();
-void		_glidix_seterrnoptr(int *ptr);
-int*		_glidix_geterrnoptr();
 int		_glidix_rmmod(const char *modname, int flags);
 int		_glidix_unmount(const char *path, int flags);
 int		_glidix_down(int action);

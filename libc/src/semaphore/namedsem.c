@@ -26,7 +26,6 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-
 #include <sys/call.h>
 #include <semaphore.h>
 #include <errno.h>
@@ -34,6 +33,7 @@
 #include <unistd.h>
 #include <sys/mman.h>
 #include <stdarg.h>
+#include <string.h>
 
 #define SEMDIR_PREFIX "/run/sem"
 

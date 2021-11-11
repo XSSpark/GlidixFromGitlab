@@ -29,8 +29,7 @@
 #ifndef	_ERRNO_H
 #define	_ERRNO_H
 
-#include <sys/glidix.h>
-#define	errno (*_glidix_geterrnoptr())
+#define	errno (*__errnoptr())
 
 #define E2BIG                                     1
 #define EACCES                                    2
@@ -111,5 +110,7 @@
 #define ETXTBSY                                   81
 #define EWOULDBLOCK                               EAGAIN
 #define EXDEV                                     83
+
+int* __errnoptr();
 
 #endif

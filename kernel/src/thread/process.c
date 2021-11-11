@@ -499,13 +499,6 @@ pid_t procCreate(KernelThreadFunc func, void *param)
 
 user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err)
 {
-	if (addr == 0 && (flags & MAP_FIXED) == 0)
-	{
-		// TODO: allocate address space automatically!
-		if (err != NULL) *err = EOPNOTSUPP;
-		return MAP_FAILED;
-	};
-
 	if ((addr & 0xFFF) || (offset & 0xFFF) || length > PROC_USER_ADDR_MAX || addr > PROC_USER_ADDR_MAX
 		|| (addr+length) > PROC_USER_ADDR_MAX || length == 0)
 	{
@@ -600,6 +593,41 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 	errno_t status = 0;
 
 	mutexLock(&proc->mapLock);
+	if (addr == 0 && (flags & MAP_FIXED) == 0)
+	{
+		addr = (PROC_USER_ADDR_MAX - length) & ~0xFFFUL;
+		
+		while (1)
+		{
+			for (scan=addr;scan<addr+length; scan+=PAGE_SIZE)
+			{
+				uint32_t pageIndex = (scan >> 12);
+				ProcessMapping *colliding = (ProcessMapping*) treemapGet(proc->mappingTree, pageIndex);
+
+				if (colliding != NULL)
+				{
+					if (colliding->addr < length)
+					{
+						mutexUnlock(&proc->mapLock);
+						procMappingUnref(mapping);
+
+						if (err != NULL) *err = ENOMEM;
+						return MAP_FAILED;
+					};
+
+					addr = (colliding->addr - length) & 0xFFFUL;
+					break;
+				};
+			};
+
+			if (scan > addr)
+			{
+				// we've scanned and there were no pages so we can use this
+				break;
+			};
+		};
+	};
+
 	for (scan=addr; scan<addr+length; scan+=PAGE_SIZE)
 	{
 		// get the page and fail with ENOMEM if we can't
