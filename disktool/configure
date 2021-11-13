@@ -1,6 +1,6 @@
 #! /usr/bin/mbs
 /*
-	Glidix Distro HDD Maker
+	Glidix disk tool
 
 	Copyright (c) 2021, Madd Games.
 	All rights reserved.
@@ -29,21 +29,39 @@
 
 import stdopt;
 import cc;
+import dir;
 
-set maker_version = (mbs_release_version);
-print ('Distro HDD maker version: ' maker_version);
+set disktool_version = (mbs_release_version);
+print ('disktool version: ' disktool_version);
 
-package 'dist-hdd-maker' (maker_version)
+package 'disktool' (disktool_version)
 {
-	file ('/bin/dist-hdd-maker' mbs_ext_bin)
+	file (prefix '/lib/libdisktool' mbs_ext_shared)
 	{
-		cc_append_ldflags '-L../disktool-build-buildsys/disktool/usr/lib';
-		cc_incdir '../disktool-build-buildsys/disktool-dev/usr/include';
-		cc_append_libs '-ldisktool';
+		cc_shared;
 
-		cc_incdir (mbs_srcdir '/src');
-		cc_srcdir (mbs_srcdir '/src');
+		cc_incdir (mbs_srcdir '/include');
+		cc_srcdir (mbs_srcdir '/lib');
 
 		cc_link;
+	};
+
+	file (prefix '/bin/disktool' mbs_ext_bin)
+	{
+		cc_append_ldflags ('-Ldisktool/' prefix '/lib');
+		cc_append_libs '-ldisktool';
+
+		cc_incdir (mbs_srcdir '/include');
+		cc_srcdir (mbs_srcdir '/tool');
+
+		cc_link;
+	};
+};
+
+package 'disktool-dev' (disktool_version)
+{
+	file (prefix '/include')
+	{
+		dir_src (mbs_srcdir '/include');
 	};
 };

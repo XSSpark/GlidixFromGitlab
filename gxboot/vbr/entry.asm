@@ -49,17 +49,9 @@ bits 16
 _start:
 cli
 
-; figure out the size in sectors
-mov eax, [size]
-shr eax, 9
-inc eax
-mov [dap.count], ax
-
-; load starting from the second sector
-mov eax, [si+8]
+; nothing to load, but load the starting block from the GPT part entry
+mov eax, [si+32]
 mov [part_start], eax
-inc eax
-mov [dap.lba], eax
 
 ; save the disk number
 mov [boot_disk], dl
@@ -69,12 +61,6 @@ mov sp, 0x7C00
 
 ; enable interrupts now
 sti
-
-; load the rest of the VBR
-mov ah, 0x42
-mov si, dap
-int 0x13
-jc boot_failed
 %endif
 
 ; this is the starting point for El Torito. the first stage already loaded the whole VBR,

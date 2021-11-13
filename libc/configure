@@ -1,6 +1,6 @@
 #! /usr/bin/mbs
 /*
-	Glidix kernel
+	Glidix standard C library (libc)
 
 	Copyright (c) 2021, Madd Games.
 	All rights reserved.

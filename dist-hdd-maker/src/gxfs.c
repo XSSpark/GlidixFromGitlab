@@ -40,6 +40,8 @@
 #include "maker.h"
 
 static GXFS_Superblock superblock;
+static off_t gxfsStartPos;
+static size_t gxfsPartSize;
 
 static void generateMGSID(uint8_t *buffer)
 {
@@ -354,8 +356,11 @@ static void makeInode(uint64_t iBlockNum, const char *path)
 	flushInodeWriter(&iw);
 };
 
-void gxfsMake()
+void gxfsMake(off_t startPos, size_t size)
 {
+	gxfsStartPos = startPos;
+	gxfsPartSize = size;
+	
 	printf("[dist-hdd-maker] Initializing the superblock...\n");
 	uint64_t formatTime = (uint64_t) time(NULL);
 

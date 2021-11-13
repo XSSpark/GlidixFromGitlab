@@ -26,6 +26,7 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
+#include <libdisktool.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -36,105 +37,42 @@
 #include "maker.h"
 #include "gxfs.h"
 
-typedef struct
-{
-	uint8_t flags;
-	uint8_t startHead;
-	uint16_t startCylSector;
-	uint8_t systemID;
-	uint8_t endHead;
-	uint16_t endCylSector;
-	uint32_t startLBA;
-	uint32_t partSize;
-} __attribute__ ((packed)) MBRPart;
-
-typedef struct
-{
-	char bootstrap[MBR_BOOTSTRAP_SIZE];
-	MBRPart parts[4];
-	uint16_t sig;
-} __attribute__ ((packed)) MBR;
-
 int hdd;
-static uint8_t vbrBuffer[VBR_SIZE];
 
 int main()
 {
-	printf("[dist-hdd-maker] Creating blank image...\n");
-
-	hdd = open("distro-out/hdd.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
-	if (hdd == -1)
+	printf("[dist-hdd-maker] Preparing image...\n");
+	Disk *disk = diskOpen("distro-out/hdd.bin");
+	if (disk == NULL)
 	{
-		perror("[dist-hdd-maker] distro-out/hdd.bin");
+		perror("[dist-hdd-maker] diskOpen");
 		return 1;
 	};
 
-	if (ftruncate(hdd, HDD_SIZE) != 0)
+	GUID guidRoot;
+	diskGUIDFromString(&guidRoot, "81C1AD9C-BDC4-4809-8D9F-DCB2A9B85D01");
+
+	int i;
+	PartInfo pinfo;
+	int found = 0;
+
+	for (i=0; diskGetPartInfoByIndex(disk, i, &pinfo)==0; i++)
 	{
-		perror("[dist-hdd-maker] ftruncate");
+		if (diskGUIDIsEqual(pinfo.partType, guidRoot))
+		{
+			found = 1;
+			break;
+		};
+	};
+
+	if (!found)
+	{
+		fprintf(stderr, "[dist-hdd-maker] Failed to find the root partition!\n");
 		return 1;
 	};
 
-	printf("[dist-hdd-maker] Creating MBR...\n");
-
-	MBR mbr;
-	memset(&mbr, 0, sizeof(MBR));
-	
-	int fd = open(MBR_PATH, O_RDONLY);
-	if (fd == -1)
-	{
-		perror("[dist-hdd-maker] " MBR_PATH);
-		return 1;
-	};
-
-	if (read(fd, mbr.bootstrap, MBR_BOOTSTRAP_SIZE) == -1)
-	{
-		fprintf(stderr, "[hdd-dist-maker] Failed to read MBR bootstrap code!\n");
-		return 1;
-	};
-
-	close(fd);
-
-	MBRPart *part = &mbr.parts[0];
-	part->flags = 0x80;			// active (bootable) flag set
-	part->systemID = 0x7F;			// GXFS partitions to be marked with 'misc' type
-	part->startLBA = ROOT_START_LBA;
-	part->partSize = ROOT_NUM_SECTORS;
-
-	mbr.sig = MBR_SIG;
-
-	if (pwrite(hdd, &mbr, sizeof(MBR), 0) != sizeof(MBR))
-	{
-		fprintf(stderr, "[dist-hdd-maker] Failed to write MBR!\n");
-		return 1;
-	};
-
-	close(fd);
-
-	printf("[dist-hdd-maker] Creating VBR...\n");
-
-	fd = open(VBR_PATH, O_RDONLY);
-	if (fd == -1)
-	{
-		perror("[dist-hdd-maker] " VBR_PATH);
-		return 1;
-	};
-
-	if (read(fd, vbrBuffer, VBR_SIZE) == -1)
-	{
-		fprintf(stderr, "[dist-hdd-maker] Failed to read VBR!\n");
-		return 1;
-	};
-
-	close(fd);
-
-	if (pwrite(hdd, vbrBuffer, VBR_SIZE, ROOT_START_LBA*SECTOR_SIZE) != VBR_SIZE)
-	{
-		fprintf(stderr, "[dist-hdd-maker] Failed to write VBR!\n");
-		return 1;
-	};
-
-	gxfsMake();
+	hdd = disk->fd;
+	gxfsMake(pinfo.offset, pinfo.numSectors * SECTOR_SIZE);
 
 	close(hdd);
 	return 0;

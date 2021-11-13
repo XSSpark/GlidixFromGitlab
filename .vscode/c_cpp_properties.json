@@ -4,7 +4,8 @@
             "name": "Linux",
             "includePath": [
                 "kernel/include",
-                "kernel/include/acpi"
+                "kernel/include/acpi",
+                "${workspaceFolder}/disktool/include"
             ],
             "compilerPath": "/usr/bin/x86_64-glidix-gcc",
             "cStandard": "gnu11",

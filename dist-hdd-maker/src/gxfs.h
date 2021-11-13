@@ -33,11 +33,12 @@
 
 #include "maker.h"
 
+#define	VBR_SIZE				(2 * 1024 * 1024)
 #define	GXFS_MAGIC				(*((const uint64_t*)"__GXFS__"))
 #define	GXFS_FEATURE_BASE			(1 << 0)
 #define	GXFS_BLOCK_SIZE				0x1000
-#define	GXFS_NUM_BLOCKS				((HDD_SIZE-ROOT_START_LBA*SECTOR_SIZE-VBR_SIZE)/GXFS_BLOCK_SIZE)
-#define	GXFS_BLOCKS_OFFSET			(ROOT_START_LBA*SECTOR_SIZE+VBR_SIZE)
+#define	GXFS_NUM_BLOCKS				((gxfsPartSize-VBR_SIZE)/GXFS_BLOCK_SIZE)
+#define	GXFS_BLOCKS_OFFSET			(gxfsStartPos+VBR_SIZE)
 #define	GXFS_IDATA_WORDS			((GXFS_BLOCK_SIZE - 8)/8)
 
 #define	GXFS_TYPE_DIR				0x1000
@@ -142,6 +143,6 @@ typedef struct
 /**
  * Create the GXFS partition.
  */
-void gxfsMake();
+void gxfsMake(off_t startPos, size_t size);
 
 #endif

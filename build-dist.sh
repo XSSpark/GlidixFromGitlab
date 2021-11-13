@@ -60,10 +60,11 @@ function build {
 # --- BEGIN BUILD PROCESS ---
 notify "Building from source directory: $srcdir"
 
-build dist-hdd-maker build-hdd-maker ''
 build gxboot gxboot-build "--host=x86_64-glidix"
 build kernel kernel-build "--host=x86_64-glidix"
 build libc libc-build "--host=x86_64-glidix"
+build disktool disktool-build-buildsys "--mode=release"
+build dist-hdd-maker build-hdd-maker ''
 
 notify "Installing libraries in local sysroot..."
 (cd libc-build && DESTDIR=/glidix make install) || exit 1
@@ -96,13 +97,34 @@ notify "Copying the static sysroot into image sysroot..."
 cp -RT "$srcdir/hdd-sysroot" build-sysroot || exit 1
 
 notify "Creating the HDD image..."
-mkdir -p distro-out
-build-hdd-maker/dist-hdd-maker/bin/dist-hdd-maker || exit 1
+export LD_LIBRARY_PATH="disktool-build-buildsys/disktool/usr/lib"
+export PATH="disktool-build-buildsys/disktool/usr/bin:$PATH"
 
-if (command -v "VBoxManage" >/dev/null 2>&1) && [ ! -f "distro-out/glidix.vmdk" ]
+mkdir -p distro-out
+if [ ! -f "distro-out/hdd.bin" ]
 then
-	notify "VBoxManage command exists, so creating VMDK..."
-	(cd distro-out && VBoxManage internalcommands createrawvmdk -filename glidix.vmdk -rawdisk hdd.bin) || exit 1
+	notify "HDD image not initialized, creating and partitioning..."
+
+	disktool --create-disk distro-out/hdd.bin 10240 || exit 1
+	disktool --create-part distro-out/hdd.bin efisys 128 || exit 1
+	disktool --create-part distro-out/hdd.bin glidix-root 9000 || exit 1
+
+	if (command -v "VBoxManage" >/dev/null 2>&1) && [ ! -f "distro-out/glidix.vmdk" ]
+	then
+		notify "VBoxManage command exists, so creating VMDK..."
+		(cd distro-out && VBoxManage internalcommands createrawvmdk -filename glidix.vmdk -rawdisk hdd.bin) || exit 1
+	fi
 fi
+
+glidix_root_part="`disktool --first-of-type distro-out/hdd.bin glidix-root`"
+
+notify "Installing MBR bootloader..."
+dd if=gxboot-build/gxboot/boot/gxboot/mbr.bin of=distro-out/hdd.bin bs=446 count=1 conv=notrunc || exit 1
+
+notify "Installing the VBR bootloader on partition $glidix_root_part..."
+disktool --write distro-out/hdd.bin $glidix_root_part gxboot-build/gxboot/boot/gxboot/vbr-gxfs.bin || exit 1
+
+notify "Building the root partition..."
+build-hdd-maker/dist-hdd-maker/bin/dist-hdd-maker || exit 1
 
 notify "Build completed successfully !!!"
