@@ -3,9 +3,10 @@
         {
             "name": "Linux",
             "includePath": [
-                "kernel/include",
-                "kernel/include/acpi",
-                "${workspaceFolder}/disktool/include"
+                "${workspaceFolder}/kernel/include",
+                "${workspaceFolder}/kernel/include/acpi",
+                "${workspaceFolder}/disktool/include",
+                "${workspaceFolder}/libc/include"
             ],
             "compilerPath": "/usr/bin/x86_64-glidix-gcc",
             "cStandard": "gnu11",
@@ -18,7 +19,8 @@
                 "-Wall",
                 "-D__glidix__",
                 "-Werror",
-                "-O3"
+                "-O3",
+                "-nostdlib"
             ]
         }
     ],

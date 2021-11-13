@@ -115,7 +115,7 @@ struct stat
 #endif
 };
 
-/* implemented by libglidix directly */
+
 int	_glidix_stat(const char *path, struct stat *buf, size_t size);
 int	_glidix_fstat(int fd, struct stat *buf, size_t size);
 int	_glidix_lstat(const char *path, struct stat *buf, size_t size);

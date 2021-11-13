@@ -85,7 +85,7 @@ size_t		strftime(char *s, size_t maxsize, const char *format, const struct tm *t
 double		difftime(time_t time1, time_t time0);
 clock_t		clock();
 
-/* implemented by libglidix directly */
+
 uint64_t	_glidix_nanotime();
 
 #ifdef __cplusplus

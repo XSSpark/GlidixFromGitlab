@@ -26,36 +26,31 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _SYS_XPERM_H
-#define _SYS_XPERM_H
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
 
-#include <sys/types.h>
+/**
+ * The initial break address is after all the address space reserved for shared objects;
+ * see `docs/libc/addrlayout.html` for more information.
+ */
+static char *sbrkAddr = (char*) 0x20200000000;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+void *sbrk(intptr_t incr)
+{
+	if (incr == 0)
+	{
+		return sbrkAddr;
+	};
+	
+	incr = (incr + 0xFFF) & ~0xFFFUL;
+	char *ptr = __sync_fetch_and_add(&sbrkAddr, incr);
 
-#define	XP_RAWSOCK			(1 << 0)
-#define	XP_NETCONF			(1 << 1)
-#define	XP_MODULE			(1 << 2)
-#define	XP_MOUNT			(1 << 3)
-#define	XP_CHXPERM			(1 << 4)
-#define	XP_NICE				(1 << 5)
-#define	XP_DISPCONF			(1 << 6)
-#define	XP_FSADMIN			(1 << 7)
+	if (mmap(ptr, incr, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0) != ptr)
+	{
+		errno = ENOMEM;
+		return (void*) -1;
+	};
 
-#define	XP_ALL				0x7FFFFFFFFFFFFFFF
-#define	XP_NCHG				0xFFFFFFFFFFFFFFFF
-
-
-xperm_t _glidix_oxperm();
-xperm_t _glidix_dxperm();
-int     _glidix_chxperm(const char *path, xperm_t ixperm, xperm_t oxperm, xperm_t dxperm);
-int     _glidix_fchxperm(int fd, xperm_t ixperm, xperm_t oxperm, xperm_t dxperm);
-int	_glidix_haveperm(xperm_t perm);
-
-#ifdef __cplusplus
-}	/* extern "C" */
-#endif
-
-#endif
+	return ptr;
+};

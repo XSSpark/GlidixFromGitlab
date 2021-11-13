@@ -34,6 +34,7 @@
 #include <signal.h>
 #include <pthread.h>
 #include <stdio.h>
+#include <unistd.h>
 
 pthread_mutex_t __heap_lock;
 
@@ -76,7 +77,7 @@ static struct free_slab* buckets[_HEAP_NUM_BUCKETS];
  * Allocate a slab of the given bucket. If the bucket is out of slabs, take a slab from the next bucket and split it
  * in half. If there are no slabs left at all, return NULL.
  */
-static struct free_slab* slab_alloc(int bucket)
+static struct free_slab* slab_alloc_nobrk(int bucket)
 {
 	if (bucket >= _HEAP_NUM_BUCKETS) return NULL;
 	size_t slabSize = (1UL << (5+bucket));
@@ -89,8 +90,48 @@ static struct free_slab* slab_alloc(int bucket)
 	}
 	else
 	{
-		struct free_slab *up = slab_alloc(bucket+1);
+		struct free_slab *up = slab_alloc_nobrk(bucket+1);
 		if (up == NULL) return NULL;
+		
+		struct free_slab *other = (struct free_slab*) ((uint64_t) up + slabSize);
+		other->next = NULL;
+		buckets[bucket] = other;
+		return up;
+	};
+};
+
+static struct free_slab* slab_alloc(int bucket)
+{
+	size_t slabSize = (1UL << (5+bucket));
+	
+	if (buckets[bucket] != NULL)
+	{
+		struct free_slab *slab = buckets[bucket];
+		buckets[bucket] = slab->next;
+		return slab;
+	}
+	else
+	{
+		struct free_slab *up;
+		if (slabSize < 0x200000)
+		{
+			up = slab_alloc(bucket+1);
+			if (up == NULL) return NULL;
+		}
+		else
+		{
+			up = slab_alloc_nobrk(bucket+1);
+			if (up == NULL)
+			{
+				void *newSlab = sbrk(slabSize);
+				if (newSlab == (void*) -1)
+				{
+					return NULL;
+				};
+
+				return (struct free_slab*) newSlab;
+			};
+		};
 		
 		struct free_slab *other = (struct free_slab*) ((uint64_t) up + slabSize);
 		other->next = NULL;
@@ -104,15 +145,13 @@ static struct free_slab* slab_alloc(int bucket)
  */
 void _heap_init()
 {
-	size_t heapSize = 1UL << (_HEAP_NUM_BUCKETS + 5 - 1);
-	void *heap = mmap(NULL, heapSize, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-	if (heap == MAP_FAILED)
+	void *initialSlab = sbrk(1UL << (5+_HEAP_INIT_SLAB_BUCKET));
+	if (initialSlab == (void*) -1)
 	{
 		raise(SIGABRT);
 	};
-	
-	/* next is already set to NULL because mmap() returns zeroed-out blocks */
-	buckets[_HEAP_NUM_BUCKETS-1] = (struct free_slab*) heap;
+
+	buckets[_HEAP_INIT_SLAB_BUCKET] = (struct free_slab*) initialSlab;
 };
 
 void *_heap_malloc(size_t len)

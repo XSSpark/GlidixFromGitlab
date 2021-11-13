@@ -41,6 +41,7 @@ extern "C" {
  */
 
 #define	_HEAP_NUM_BUCKETS				33
+#define	_HEAP_INIT_SLAB_BUCKET				16
 
 void _heap_init();
 void *_heap_malloc(size_t len);

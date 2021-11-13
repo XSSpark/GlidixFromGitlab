@@ -78,6 +78,7 @@ extern char* optarg;
 extern int optind, opterr, optopt;
 
 
+void*		sbrk(intptr_t incr);
 int		execv(const char*, char* const[]);
 int		execve(const char*, char* const[], char* const[]);
 int		execvp(const char*, char* const[]);
@@ -103,8 +104,6 @@ int		getlogin_r(char *buf, size_t bufsize);
 int		isatty(int fd);
 char*		getcwd(char*, size_t);
 ssize_t		readlink(const char *path, char *buf, size_t bufsiz);
-
-/* implemented by libglidix directly */
 ssize_t		write(int fildes, const void *buf, size_t nbyte);
 ssize_t		read(int fildes, void *buf, size_t nbytes);
 int		close(int fildes);
@@ -150,8 +149,6 @@ void		sync();
 int		nice(int incr);
 int		chroot(const char *path);
 int		rmdir(const char *path);
-
-/* libcrypt */
 char*		crypt(const char *key, const char *salt);
 
 #ifdef __cplusplus

@@ -104,7 +104,7 @@ struct __pthread_key
 
 typedef struct __pthread_key *pthread_key_t;
 
-/* implemented by libglidix directly */
+
 int		pthread_create(pthread_t *thread, const pthread_attr_t *attr, void*(*start_routine)(void*), void *arg);
 pthread_t	pthread_self();
 int		pthread_join(pthread_t thread, void **retval);

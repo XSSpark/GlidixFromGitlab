@@ -77,7 +77,7 @@ struct sockaddr_storage
 	char				ss_data[256];
 };
 
-/* implemented by libglidix directly */
+
 int socket(int domain, int type, int proto);
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen);
 ssize_t send(int socket, const void *buffer, size_t length, int flags);
