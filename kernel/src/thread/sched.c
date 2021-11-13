@@ -608,11 +608,6 @@ void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *si
 		// ignore
 		return;
 	}
-	else if (handler < 256 && schedGetCurrentThread()->proc->pid == 1)
-	{
-		// ignore any signals for init that it doesn't explicitly handle
-		return;
-	}
 	else if (handler == SIG_TERM || handler == SIG_CORE)
 	{
 		procExit(PROC_WS_SIG(siginfo->si_signo));
@@ -714,6 +709,13 @@ void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si)
 	ksigset_t mask = (1UL << si->si_signo);
 	SigAction *act = &proc->sigActions[si->si_signo];
 	user_addr_t handler = act->sa_sigaction_handler;
+	if (handler < 256 && proc->pid == 1)
+	{
+		// don't deliver signals to init which it doesn't handle
+		spinlockRelease(&schedLock, irqState);
+		return;
+	};
+	
 	if (handler == SIG_DFL) handler = schedGetDefaultSignalAction(si->si_signo);
 	if (handler == SIG_IGN)
 	{
