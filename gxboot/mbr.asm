@@ -106,7 +106,6 @@ mov eax, 2
 xor ebx, ebx
 shr cx, 2
 inc cx
-xchg bx, bx
 call read_sectors
 
 ; pop the number of partitions into dx
