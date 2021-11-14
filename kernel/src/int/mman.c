@@ -46,7 +46,7 @@ user_addr_t sys_mmap(user_addr_t addr, size_t length, int prot, int flags, int f
 
 	errno_t err;
 	user_addr_t result = procMap(addr, length, prot, flags, fp, offset, &err);
-	vfsClose(fp);
+	if (fp != NULL) vfsClose(fp);
 
 	if (result == MAP_FAILED)
 	{
