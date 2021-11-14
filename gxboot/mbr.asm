@@ -93,9 +93,9 @@ test ecx, ecx
 jz err_bad_gpt
 
 ; if too many entries, truncate to a maximum
-cmp ecx, 512
+cmp ecx, 256
 jl part_count_ok
-mov ecx, 512
+mov ecx, 256
 part_count_ok:
 
 ; save the number of partitions to the stack
@@ -106,6 +106,7 @@ mov eax, 2
 xor ebx, ebx
 shr cx, 2
 inc cx
+xchg bx, bx
 call read_sectors
 
 ; pop the number of partitions into dx
