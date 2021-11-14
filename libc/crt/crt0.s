@@ -3,7 +3,9 @@
 .weak __call_init_array
 
 _start:
-	call _init
+	mov %rsp, %rdi
+	call __libc_init
+
 	call __call_init_array
 	
 	mov (%rsp), %rdi

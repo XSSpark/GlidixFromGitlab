@@ -37,57 +37,7 @@
 
 char **environ;
 
-static int __init_done = 0;
-static int __argc;
-static char **__argv;
-
-__attribute__ ((constructor)) void __do_init()
+void __libc_init()
 {
 	_heap_init();
-
-	// parse the execPars
-	size_t parsz = _glidix_getparsz();
-	char *buffer = (char*) malloc(parsz);
-	_glidix_getpars(buffer, parsz);
-
-	int argc = 0;
-	char **argv = NULL;
-
-	char *scan = buffer;
-	char *prevStart = buffer;
-	while (1)
-	{
-		char c = *scan++;
-		if (c == 0)
-		{
-			if ((scan-prevStart) == 1) break;
-			argv = realloc(argv, sizeof(char*)*(argc+1));
-			argv[argc++] = prevStart;
-			prevStart = scan;
-		};
-	};
-
-	argv = realloc(argv, sizeof(char*)*(argc+1));
-	argv[argc] = NULL;
-	environ = NULL;
-	int envc = 0;
-	prevStart++;
-	scan = prevStart;
-	while (1)
-	{
-		char c = *scan++;
-		if (c == 0)
-		{
-			if ((scan-prevStart) == 1) break;
-			environ = realloc(environ, sizeof(char*)*(envc+1));
-			environ[envc++] = strdup(prevStart);
-			prevStart = scan;
-		};
-	};
-	environ = realloc(environ, sizeof(char*)*(envc+1));
-	environ[envc] = NULL;
-
-	__argc = argc;
-	__argv = argv;
-	__init_done = 1;
 };
