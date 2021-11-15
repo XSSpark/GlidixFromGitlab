@@ -73,3 +73,43 @@ mmap:
 mmap_ret:
 	ret
 .size mmap, .-mmap
+
+.globl sigaction
+.type sigaction, @function
+sigaction:
+	mov $1, %rax
+	syscall
+
+	// if return value was zero, return now
+	test %eax, %eax
+	jz sigaction_ret
+
+	// nonzero return value: negated error number.
+	// store it in errno (fs+0x18)
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+sigaction_ret:
+	ret
+.size sigaction, .-sigaction
+
+.globl write
+.type write, @function
+write:
+	mov $7, %rax
+	syscall
+
+	// if return value is non-negative, return it
+	mov $0x8000000000000000, %rcx
+	test %rcx, %rax
+	jz write_ret
+
+	// negative return value; set errno
+	neg %rax
+	mov %eax, %fs:(0x18)
+	mov $-1, %rax
+
+write_ret:
+	ret
+.size write, .-write
