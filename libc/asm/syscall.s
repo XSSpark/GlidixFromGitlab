@@ -113,3 +113,58 @@ write:
 write_ret:
 	ret
 .size write, .-write
+
+.globl dup3
+.type dup3, @function
+dup3:
+	mov $18, %rax
+	syscall
+
+	// if return value is non-negative, return it
+	mov $0x80000000, %ecx
+	test %ecx, %eax
+	jz dup3_ret
+
+	// negative return value; set errno
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+dup3_ret:
+	ret
+.size dup3, .-dup3
+
+.globl openat
+.type openat, @function
+openat:
+	mov $4, %rax
+	mov %rcx, %r10
+	syscall
+
+	mov $0x80000000, %ecx
+	test %ecx, %eax
+	jz openat_ret
+
+	// negative return value; set errno
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+openat_ret:
+	ret
+.size openat, .-openat
+
+.globl open
+.type open, @function
+open:
+	// shift the arguments
+	mov %rdx, %rcx
+	mov %rsi, %rdx
+	mov %rdi, %rsi
+	
+	// insert dirfd = AT_FDCWD
+	mov $0xFFFF, %rdi
+
+	// tail-call openat
+	jmp openat
+.size open, .-open
