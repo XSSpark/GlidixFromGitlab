@@ -29,6 +29,12 @@
 srcdir_rel="`dirname $0`"
 srcdir="`realpath $srcdir_rel`"
 
+build_mode="$BUILD_MODE"
+if [ "$build_mode" = "" ]
+then
+	build_mode="debug"
+fi
+
 if [ "$srcdir" = "." ]
 then
 	echo "ERROR: This script must be ran outside the source directory!"
@@ -58,12 +64,12 @@ function build {
 }
 
 # --- BEGIN BUILD PROCESS ---
-notify "Building from source directory: $srcdir"
+notify "Building from source directory $srcdir as $build_mode"
 
-build gxboot gxboot-build "--host=x86_64-glidix"
-build kernel kernel-build "--host=x86_64-glidix"
-build libc libc-build "--host=x86_64-glidix"
-build disktool disktool-build-buildsys "--mode=release"
+build gxboot gxboot-build "--host=x86_64-glidix --mode=$build_mode"
+build kernel kernel-build "--host=x86_64-glidix --mode=$build_mode"
+build libc libc-build "--host=x86_64-glidix --mode=$build_mode"
+build disktool disktool-build-buildsys "--mode=$build_mode"
 build dist-hdd-maker build-hdd-maker ''
 
 notify "Installing libraries in local sysroot..."
@@ -87,7 +93,7 @@ notify "Installing all packages in image sysroot..."
 (cd libc-build && DESTDIR=../build-sysroot make install) || exit 1
 
 # TODO: temporary; build init properly later
-x86_64-glidix-cc -static $srcdir/init/init.c -o build-sysroot/boot/initrd-sysroot/init -I$srcdir/libc/include -Llibc-build/libc/lib -Llibc-build/libc-dev/lib || exit 1
+x86_64-glidix-cc -static $srcdir/init/init.c -o build-sysroot/boot/initrd-sysroot/init -I$srcdir/libc/include -Llibc-build/libc/lib -Llibc-build/libc-dev/lib -ggdb || exit 1
 
 notify "Creating the initrd..."
 mkdir -p build-sysroot/boot || exit 1
