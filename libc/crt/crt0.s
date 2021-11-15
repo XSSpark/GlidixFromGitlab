@@ -5,7 +5,7 @@
 _start:
 	mov %rsp, %rdi
 	call __libc_init
-
+	call _init
 	call __call_init_array
 	
 	mov (%rsp), %rdi
@@ -15,8 +15,11 @@ _start:
 	shl $3, %rdx
 	add %rsi, %rdx
 	call main
+
+	mov %rax, %rbx
+	call _fini
 	
-	mov %rax, %rdi
+	mov %rbx, %rdi
 	call exit
 
 __call_init_array:

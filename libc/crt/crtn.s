@@ -2,7 +2,7 @@
 	pop %rbp
 	ret
 
-.section .finish
+.section .fini
 	pop %rbp
 	ret
 
