@@ -134,6 +134,11 @@ static int ramfsLoadPage(Inode *inode, off_t pos, void *buffer)
 	return 0;
 };
 
+static int ramfsTruncate(Inode *inode, size_t newSize)
+{
+	return 0;
+};
+
 /**
  * The ramfs FSDriver object.
  */
@@ -146,6 +151,7 @@ static FSDriver ramfsDriver = {
 	.loadDentry = ramfsLoadDentry,
 	.makeNode = ramfsMakeNode,
 	.loadPage = ramfsLoadPage,
+	.truncate = ramfsTruncate,
 };
 
 static void ramfsInit()

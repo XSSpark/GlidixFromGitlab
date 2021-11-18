@@ -168,3 +168,40 @@ open:
 	// tail-call openat
 	jmp openat
 .size open, .-open
+
+.globl close
+.type close, @function
+close:
+	mov $5, %rax
+	syscall
+
+	test %eax, %eax
+	jz close_ret
+
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+close_ret:
+	ret
+.size close, .-close
+
+.globl read
+.type read, @function
+read:
+	mov $6, %rax
+	syscall
+
+	// if return value is non-negative, return it
+	mov $0x8000000000000000, %rcx
+	test %rcx, %rax
+	jz read_ret
+
+	// negative return value; set errno
+	neg %rax
+	mov %eax, %fs:(0x18)
+	mov $-1, %rax
+
+read_ret:
+	ret
+.size read, .-read

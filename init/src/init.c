@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <string.h>
 
 int main()
 {
@@ -50,5 +51,38 @@ int main()
 	};
 
 	printf("Hello, world! This is init!!!\n");
+
+	fd = open("/test.txt", O_WRONLY | O_CREAT, 0644);
+	if (write(fd, "value1", 6) != 6)
+	{
+		printf("ERROR 1\n");
+		return 1;
+	};
+
+	close(fd);
+
+	fd = open("/test.txt", O_RDONLY);
+	char test[16];
+	memset(test, 0, 16);
+
+	if (read(fd, test, 6) != 6)
+	{
+		printf("ERROR 2\n");
+		return 1;
+	};
+
+	close(fd);
+	printf("We got: [%s]\n", test);
+
+	fd = open("/test.txt", O_RDWR | O_CREAT | O_TRUNC, 0644);
+	if (read(fd, test, 6) != 0)
+	{
+		printf("ERROR 3\n");
+		return 1;
+	};
+
+	close(fd);
+
+	printf("Tests ended.\n");
 	return 0x45;
 };

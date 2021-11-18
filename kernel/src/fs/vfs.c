@@ -903,7 +903,7 @@ void vfsInodeStat(Inode *inode, struct kstat *st)
 
 static PageCacheNode* _vfsPageCachePurgeRecur(int depth, PageCacheNode *node, size_t suboffset, size_t endPos)
 {
-	if (depth == 3)
+	if (depth == 4)
 	{
 		size_t totalOffset = suboffset << 12;
 		if (totalOffset >= endPos)
@@ -917,10 +917,13 @@ static PageCacheNode* _vfsPageCachePurgeRecur(int depth, PageCacheNode *node, si
 		uint64_t i;
 		for (i=0; i<512; i++)
 		{
-			node->ents[i] = (uint64_t) _vfsPageCachePurgeRecur(depth+1,
-				(PageCacheNode*) (node->ents[i] | (~VFS_PAGECACHE_ADDR_MASK)),
-				(suboffset << 9) + i, endPos
-			) & VFS_PAGECACHE_ADDR_MASK;
+			if (node->ents[i] != 0)
+			{
+				node->ents[i] = (uint64_t) _vfsPageCachePurgeRecur(depth+1,
+					(PageCacheNode*) (node->ents[i] | (~VFS_PAGECACHE_ADDR_MASK)),
+					(suboffset << 9) + i, endPos
+				) & VFS_PAGECACHE_ADDR_MASK;
+			};
 		};
 	};
 
@@ -944,7 +947,12 @@ int vfsInodeTruncate(Inode *inode, size_t newSize)
 		};
 
 		// purge caches from the cache above the new end position
-		inode->pageCacheMaster = _vfsPageCachePurgeRecur(0, inode->pageCacheMaster, 0, newSize);
+		if (inode->pageCacheMaster != NULL)
+		{
+			inode->pageCacheMaster = _vfsPageCachePurgeRecur(0, inode->pageCacheMaster, 0, newSize);
+		};
+
+		inode->size = newSize;
 	};
 	mutexUnlock(&inode->pageCacheLock);
 	
