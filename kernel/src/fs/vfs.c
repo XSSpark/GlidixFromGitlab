@@ -156,6 +156,7 @@ static Inode* vfsAllocInode(FileSystem *fs)
 	inode->flags = 0;
 	inode->refcount = 1;
 	inode->fs = fs;
+	inode->mtime = inode->atime = inode->ctime = inode->btime = 0;	// TODO: the current timestamp!
 	
 	return inode;
 };
@@ -536,8 +537,6 @@ struct File_* vfsOpen(File *start, const char *path, int oflags, mode_t mode, er
 			if (err != NULL) *err = EINVAL;
 			return NULL;
 		};
-
-		panic("TODO: support O_TRUNC");
 	};
 
 	char *dirname = vfsDirName(path);
@@ -639,6 +638,12 @@ struct File_* vfsOpen(File *start, const char *path, int oflags, mode_t mode, er
 	// try to open
 	File *fp = vfsOpenInode(&walker, oflags, err);
 	vfsPathWalkerDestroy(&walker);
+
+	if (fp != NULL && oflags & O_TRUNC)
+	{
+		vfsInodeTruncate(fp->walker.current, 0);
+	};
+	
 	return fp;
 };
 
@@ -879,4 +884,69 @@ void* vfsInodeGetPage(Inode *inode, off_t offset)
 	mutexUnlock(&inode->pageCacheLock);
 
 	return page;
+};
+
+void vfsInodeStat(Inode *inode, struct kstat *st)
+{
+	memset(st, 0, sizeof(struct kstat));
+	st->st_ino = inode->ino;
+	st->st_mode = inode->mode;
+	st->st_nlink = inode->numLinks;
+	st->st_uid = inode->uid;
+	st->st_gid = inode->gid;
+	st->st_size = inode->size;
+	st->st_atime = inode->atime;
+	st->st_mtime = inode->mtime;
+	st->st_ctime = inode->ctime;
+	st->st_btime = inode->btime;
+};
+
+static PageCacheNode* _vfsPageCachePurgeRecur(int depth, PageCacheNode *node, size_t suboffset, size_t endPos)
+{
+	if (depth == 3)
+	{
+		size_t totalOffset = suboffset << 12;
+		if (totalOffset >= endPos)
+		{
+			komUserPageUnref(node);
+			return NULL;
+		};
+	}
+	else
+	{
+		uint64_t i;
+		for (i=0; i<512; i++)
+		{
+			node->ents[i] = (uint64_t) _vfsPageCachePurgeRecur(depth+1,
+				(PageCacheNode*) (node->ents[i] | (~VFS_PAGECACHE_ADDR_MASK)),
+				(suboffset << 9) + i, endPos
+			) & VFS_PAGECACHE_ADDR_MASK;
+		};
+	};
+
+	return node;
+};
+
+int vfsInodeTruncate(Inode *inode, size_t newSize)
+{
+	mutexLock(&inode->pageCacheLock);
+	int status = inode->fs->driver->truncate(inode, newSize);
+	if (status == 0)
+	{
+		if (newSize & 0xFFF)
+		{
+			// get the final page and zero out the end
+			char *page = (char*) _vfsGetCachePage(inode, newSize, 0, NULL);
+			if (page != NULL)
+			{
+				memset(page + (newSize & 0xFFF), 0, PAGE_SIZE - (newSize & 0xFFF));
+			};
+		};
+
+		// purge caches from the cache above the new end position
+		inode->pageCacheMaster = _vfsPageCachePurgeRecur(0, inode->pageCacheMaster, 0, newSize);
+	};
+	mutexUnlock(&inode->pageCacheLock);
+	
+	return status;
 };

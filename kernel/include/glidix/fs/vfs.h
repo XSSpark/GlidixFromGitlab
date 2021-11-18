@@ -147,6 +147,16 @@ struct FSDriver_
 	 * If the offset does not currently exist, most filesystem will zero out `buffer`.
 	 */
 	int (*loadPage)(Inode *inode, off_t offset, void *buffer);
+
+	/**
+	 * Resize the specified file. Free on-disk blocks past the page boundary of the new size. The kernel
+	 * will automatically zero out up to the page boundary in the page cache, and drop following pages.
+	 * This function will be called while the page cache lock is held.
+	 * 
+	 * Return 0 on success, or a negated error number on error. If this function reports an error, the
+	 * kernel will not make any changes to the size or the page cache.
+	 */
+	int (*truncate)(Inode *inode, size_t newSize);
 };
 
 /**
@@ -239,6 +249,11 @@ struct Inode_
 	mode_t mode;
 
 	/**
+	 * Number of hard links to this inode.
+	 */
+	nlink_t numLinks;
+	
+	/**
 	 * Size of the file (for regular files).
 	 */
 	size_t size;
@@ -252,6 +267,14 @@ struct Inode_
 	 * Group associated with the inode.
 	 */
 	gid_t gid;
+
+	/**
+	 * Inode times.
+	 */
+	time_t mtime;
+	time_t atime;
+	time_t ctime;
+	time_t btime;
 
 	/**
 	 * Mutex protecting the page cache.
@@ -424,5 +447,15 @@ ssize_t vfsInodeWrite(Inode *inode, const void *buffer, size_t size, off_t pos);
  * an error occured.
  */
 void* vfsInodeGetPage(Inode *inode, off_t offset);
+
+/**
+ * Get the current inode state. This function never fails.
+ */
+void vfsInodeStat(Inode *inode, struct kstat *st);
+
+/**
+ * Resize the specified inode. Returns 0 on success, or a negated error number on error.
+ */
+int vfsInodeTruncate(Inode *inode, size_t newSize);
 
 #endif

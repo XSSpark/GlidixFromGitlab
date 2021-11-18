@@ -81,6 +81,9 @@ static int ramfsLoadInode(FileSystem *fs, Inode *inode, ino_t ino)
 
 	// the root directory is its own parent
 	inode->parentIno = RAMFS_ROOT_INO;
+
+	// root directory has 1 link to it
+	inode->numLinks = 1;
 	
 	return 0;
 };
@@ -118,6 +121,8 @@ static int ramfsMakeNode(Inode *parent, Dentry *dent, Inode *child)
 
 	dent->target = child->ino;
 	dent->flags |= VFS_DENTRY_NOCACHE;
+
+	__sync_fetch_and_add(&parent->numLinks, 1);
 
 	return 0;
 };
