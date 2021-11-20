@@ -92,17 +92,6 @@ _tss:
 resb 192
 _tss_limit:
 
-; TODO
-;[global _tss_reload_access]
-;[extern localGDTPtr]
-;_tss_reload_access:
-;	mov al,		11101001b
-;	mov rdi,	qword localGDTPtr
-;	mov rdi,	[rdi]
-;	add rdi,	0x35
-;	stosb
-;	ret
-
 [global initTR]
 initTR:
 	; initialize the task register for IST stuff
