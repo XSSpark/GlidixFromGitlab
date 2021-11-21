@@ -159,3 +159,8 @@ int sys_mprotect(user_addr_t addr, size_t len, int prot)
 {
 	return procProtect(addr, len, prot);
 };
+
+errno_t sys_pthread_detach(thid_t thid)
+{
+	return procDetachThread(thid);
+};

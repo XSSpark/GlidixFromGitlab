@@ -84,5 +84,6 @@ int main()
 	close(fd);
 
 	printf("Tests ended.\n");
+	printf("Still working?\n");
 	return 0x45;
 };

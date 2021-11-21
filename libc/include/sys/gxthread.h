@@ -30,9 +30,19 @@
 #define	_SYS_GXTHREAD_H
 
 /**
+ * Represents a thread ID (equivalent to `pthread_t`).
+ */
+typedef int __thid_t;
+
+/**
  * Exit from the current thread, returning the specified value. This bypasses any
  * `pthread_atexit` handlers.
  */
 _Noreturn void __thexit(void *retval);
+
+#ifdef _GLIDIX_SOURCE
+#define	thexit __thexit
+#define	thid_t __thid_t
+#endif
 
 #endif

@@ -1627,3 +1627,27 @@ int procKill(pid_t pid, int signo)
 	mutexUnlock(&procTableLock);
 	return ctx.status;
 };
+
+errno_t procDetachThread(thid_t thid)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	mutexLock(&proc->threadTableLock);
+
+	Thread *target = (Thread*) treemapGet(proc->threads, thid);
+	if (target == NULL)
+	{
+		mutexUnlock(&proc->threadTableLock);
+		return ESRCH;
+	};
+
+	if (target->isDetached)
+	{
+		mutexUnlock(&proc->threadTableLock);
+		return EINVAL;
+	};
+
+	schedDetachKernelThread(target);
+	mutexUnlock(&proc->threadTableLock);
+	return 0;
+};

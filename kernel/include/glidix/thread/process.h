@@ -634,4 +634,9 @@ int procSetProcessGroup(pid_t pid, pid_t pgid);
  */
 int procKill(pid_t pid, int signo);
 
+/**
+ * Detach the thread with the specified ID. Returns 0 on success, or an error number on error.
+ */
+errno_t procDetachThread(thid_t thid);
+
 #endif

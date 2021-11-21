@@ -66,6 +66,7 @@ void* _sysCallTable[] = {
 	sys_thexit,							// 22
 	sys_munmap,							// 23
 	sys_mprotect,							// 24
+	sys_pthread_detach,						// 25
 };
 
 /**

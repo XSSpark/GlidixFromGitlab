@@ -104,4 +104,9 @@ int sys_munmap(user_addr_t addr, size_t len);
  */
 int sys_mprotect(user_addr_t addr, size_t len, int prot);
 
+/**
+ * Detach the specified thread ID. Returns 0 on success, or an error number on error.
+ */
+errno_t sys_pthread_detach(thid_t thid);
+
 #endif

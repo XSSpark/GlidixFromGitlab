@@ -251,3 +251,11 @@ mprotect:
 mprotect_ret:
 	ret
 .size mprotect, .-mprotect
+
+.globl pthread_detach
+.type pthread_detach, @function
+pthread_detach:
+	mov $25, %rax
+	syscall
+	ret
+.size pthread_detach, .-pthread_detach

@@ -56,6 +56,7 @@
 #define	__SYS_thexit							22
 #define	__SYS_munmap							23
 #define	__SYS_mprotect							24
+#define	__SYS_pthread_detach						25
 
 // TODO
 #define	__SYS_block_on							255

@@ -28,6 +28,7 @@ section .user_aux
 bits 64
 
 global userAuxSigReturn
+global userAuxThreadReturn
 
 userAuxSigReturn:
 	; restore the old signal mask
@@ -70,3 +71,10 @@ userAuxSigReturn:
 	; zone; use RET to jump to the return address and to pop off
 	; the 128 bytes
 	ret 128
+
+userAuxThreadReturn:
+	; the thread return value is in RAX, pass it to the `sys_thexit()`
+	; system call
+	mov rdi, rax
+	mov rax, 22
+	syscall
