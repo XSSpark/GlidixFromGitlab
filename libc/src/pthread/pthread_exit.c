@@ -26,35 +26,12 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#ifndef _SYS_MMAN_H
-#define _SYS_MMAN_H
+#include <sys/gxthread.h>
+#include <pthread.h>
+#include <stdnoreturn.h>
 
-#include <sys/types.h>
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-#define	PROT_NONE			0
-#define	PROT_READ			(1 << 0)
-#define	PROT_WRITE			(1 << 1)
-#define	PROT_EXEC			(1 << 2)
-
-#define	MAP_PRIVATE			(1 << 0)
-#define	MAP_SHARED			(1 << 1)
-#define	MAP_ANONYMOUS			(1 << 2)
-#define	MAP_FIXED			(1 << 3)
-
-#define	MAP_ANON			MAP_ANONYMOUS
-
-#define	MAP_FAILED			((void*)-1)
-
-int mprotect(void *addr, size_t len, int prot);
-int munmap(void *addr, size_t len);
-void* mmap(void *addr, size_t len, int prot, int flags, int fd, off_t offset);
-
-#ifdef __cplusplus
-}	/* extern "C" */
-#endif
-
-#endif
+noreturn void pthread_exit(void *retval)
+{
+	// TODO: pthread_atexit() stuff
+	__thexit(retval);
+};

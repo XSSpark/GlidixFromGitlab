@@ -53,6 +53,9 @@
 #define	__SYS_pthread_self						19
 #define	__SYS_raise							20
 #define	__SYS_mmap							21
+#define	__SYS_thexit							22
+#define	__SYS_munmap							23
+#define	__SYS_mprotect							24
 
 // TODO
 #define	__SYS_block_on							255

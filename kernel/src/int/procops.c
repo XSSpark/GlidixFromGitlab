@@ -144,3 +144,18 @@ int sys_raise(int signo)
 	sysDispatchSignal(&si, 0);
 	return 0;
 };
+
+void sys_thexit(thretval_t retval)
+{
+	procExitThread(retval);
+};
+
+int sys_munmap(user_addr_t addr, size_t len)
+{
+	return procUnmap(addr, len);
+};
+
+int sys_mprotect(user_addr_t addr, size_t len, int prot)
+{
+	return procProtect(addr, len, prot);
+};

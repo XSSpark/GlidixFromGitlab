@@ -682,6 +682,107 @@ user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *
 	return addr;
 };
 
+int procUnmap(user_addr_t addr, size_t len)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	if (len == 0)
+	{
+		return -EINVAL;
+	};
+
+	int status = 0;
+	mutexLock(&proc->mapLock);
+	user_addr_t scan;
+	for (scan=addr; scan<addr+len; scan+=PAGE_SIZE)
+	{
+		if (scan >= PROC_USER_ADDR_MAX) break;
+
+		ProcessMapping *mapping = treemapGet(proc->mappingTree, scan >> 12);
+		if (mapping == NULL) continue;
+
+		PageNodeEntry *pte = _procGetPageTableEntry(scan);
+		if (pte != NULL && pte->value & PT_PRESENT)
+		{
+			void *canon = komPhysToVirt(pte->value & PT_PHYS_MASK);
+			ASSERT(canon != NULL);
+
+			pte->value = 0;
+			invlpg((void*) scan);
+			cpuInvalidatePage(proc->cr3, (void*) scan);
+			
+			komUserPageUnref(canon);
+		};
+
+		treemapSet(proc->mappingTree, scan >> 12, NULL);
+		procMappingUnref(mapping);
+	};
+	mutexUnlock(&proc->mapLock);
+
+	return status;
+};
+
+int procProtect(user_addr_t addr, size_t len, int prot)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+	if ((prot & PROT_ALL) != prot)
+	{
+		return -EINVAL;
+	};
+
+	if (len == 0)
+	{
+		return -EINVAL;
+	};
+
+	int status = 0;
+	mutexLock(&proc->mapLock);
+	user_addr_t scan;
+	for (scan=addr; scan<addr+len; scan+=PAGE_SIZE)
+	{
+		ProcessMapping *mapping = treemapGet(proc->mappingTree, scan >> 12);
+		if (mapping == NULL)
+		{
+			status = -ENOMEM;
+			break;
+		};
+
+		int allowedPerms = PROT_READ | PROT_EXEC;
+		if (mapping->mflags & MAP_PRIVATE || mapping->oflags & O_WRONLY)
+		{
+			allowedPerms |= PROT_WRITE;
+		};
+
+		if ((prot & allowedPerms) != prot)
+		{
+			status = -EACCES;
+			break;
+		};
+
+		int setPermBits = 0;
+		if (prot & PROT_READ) setPermBits |= PT_PROT_READ;
+		if (prot & PROT_WRITE) setPermBits |= PT_PROT_WRITE;
+		if (prot & PROT_EXEC) setPermBits |= PT_PROT_EXEC;
+
+		PageNodeEntry *pte = _procGetPageTableEntry(scan);
+		if (pte == NULL)
+		{
+			status = -ENOMEM;
+			break;
+		};
+
+		pte->value = (pte->value & ~PT_PROT_MASK) | setPermBits;
+		if ((prot & PROT_EXEC) == 0) pte->value = PT_NOEXEC;
+		if ((prot & PROT_WRITE) == 0) pte->value &= ~PT_WRITE;
+
+		invlpg((void*) scan);
+		cpuInvalidatePage(proc->cr3, (void*) scan);
+	};
+	mutexUnlock(&proc->mapLock);
+
+	return status;
+};
+
 static void _procUnmapWalkCallback(TreeMap *mappingTree, uint32_t pageIndex, void *value, void *context)
 {
 	Process *proc = (Process*) context;
@@ -697,7 +798,7 @@ static void _procUnmapWalkCallback(TreeMap *mappingTree, uint32_t pageIndex, voi
 	user_addr_t userAddr = ((user_addr_t) pageIndex) << 12;
 	PageNodeEntry *pte = _procGetPageTableEntry(userAddr);
 
-	if (pte->value & PT_PRESENT)
+	if (pte != NULL && pte->value & PT_PRESENT)
 	{
 		void *canon = komPhysToVirt(pte->value & PT_PHYS_MASK);
 		ASSERT(canon != NULL);
@@ -1130,7 +1231,7 @@ int procFileClose(int fd)
 };
 
 /**
- * This is called from `procExit()` to walk through the process table, `context_` being the process
+ * This is called from `procExitThread()` to walk through the process table, `context_` being the process
  * exiting, and any process who has the exiting process as a parent, will have the parent PID set to
  * 1 (init).
  */
@@ -1145,10 +1246,76 @@ static void _procOrphaneChildrenCallback(TreeMap *tm, uint32_t index, void *valu
 	};
 };
 
+/**
+ * This is called from `procExit()`, to send `SIGTHKILL` to every thread except the calling thread, and to
+ * detach them.
+ */
+static void _procKillOtherThreadsCallback(TreeMap *tm, uint32_t thid, void *value_, void *context_)
+{
+	Thread *thread = (Thread*) value_;
+	if (thread != schedGetCurrentThread())
+	{
+		// deliver the SIGTHKILL signal
+		ksiginfo_t si;
+		memset(&si, 0, sizeof(ksiginfo_t));
+		si.si_signo = SIGTHKILL;
+
+		schedDeliverSignalToThread(thread, &si);
+		if (!thread->isDetached)
+		{
+			schedDetachKernelThread(thread);
+		};
+	};
+};
+
 noreturn void procExit(int wstatus)
+{
+	// set the wstatus on the process
+	Thread *thread = schedGetCurrentThread();
+	Process *proc = thread->proc;
+	proc->wstatus = wstatus;
+
+	// stop other threads using the SIGTHKILL signal
+	mutexLock(&proc->threadTableLock);
+	treemapWalk(proc->threads, _procKillOtherThreadsCallback, NULL);
+	mutexUnlock(&proc->threadTableLock);
+
+	// now we exit
+	procExitThread(0);
+};
+
+noreturn void procExitThread(thretval_t retval)
 {
 	Thread *thread = schedGetCurrentThread();
 	Process *proc = thread->proc;
+
+	// if we are a detached thread, remove us from the thread table
+	mutexLock(&proc->threadTableLock);
+	if (thread->isDetached)
+	{
+		treemapSet(proc->threads, thread->thid, NULL);
+	};
+	mutexUnlock(&proc->threadTableLock);
+
+	// unmap our stack and FSBASE area (ignore errors)
+	ThreadBlockHeader threadBlockHeader;
+	if (procToKernelCopy(&threadBlockHeader, thread->fsbase, sizeof(ThreadBlockHeader)) == 0)
+	{
+		procUnmap(threadBlockHeader.stackBase, threadBlockHeader.stackSize);
+	};
+	procUnmap(thread->fsbase, PROC_THREAD_BLOCK_SIZE);
+
+	if (__sync_add_and_fetch(&proc->numThreads, -1) > 0)
+	{
+		// there are still other threads
+		schedExitThread(retval);
+	};
+
+	// there are no more threads, so the whole process is exiting, make sure we aren't init
+	if (proc->pid == 1)
+	{
+		panic("The init process attempted to exit, with wstatus=0x%x!", proc->wstatus);
+	};
 
 	ksiginfo_t si;
 	memset(&si, 0, sizeof(ksiginfo_t));
@@ -1156,16 +1323,6 @@ noreturn void procExit(int wstatus)
 	si.si_pid = proc->pid;
 	si.si_uid = proc->ruid;
 	si.si_code = CLD_EXITED;
-
-	if (proc->pid == 1)
-	{
-		panic("The init process attempted to exit, with wstatus=0x%x!", wstatus);
-	};
-
-	if (proc->numThreads > 1)
-	{
-		panic("TODO: i don't know how to kill other threads yet!");
-	};
 
 	// close all file descriptors
 	int fd;
@@ -1187,7 +1344,6 @@ noreturn void procExit(int wstatus)
 
 	// with the process table lock held, orphane the children and inform the parent about us
 	mutexLock(&procTableLock);
-	proc->wstatus = wstatus;
 	proc->terminated = 1;
 	treemapWalk(procTable, _procOrphaneChildrenCallback, proc);
 	Process *parent = (Process*) treemapGet(procTable, proc->parent);
@@ -1208,7 +1364,7 @@ noreturn void procExit(int wstatus)
 
 	// exit from this thread
 	schedDetachKernelThread(thread);
-	schedExitThread();
+	schedExitThread(retval);
 };
 
 static void _procWaitWalkCallback(TreeMap *tm, uint32_t ignore_, void *value_, void *context_)

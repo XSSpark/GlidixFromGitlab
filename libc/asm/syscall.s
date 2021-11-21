@@ -205,3 +205,49 @@ read:
 read_ret:
 	ret
 .size read, .-read
+
+.globl __thexit
+.type __thexit, @function
+__thexit:
+	mov $22, %rax
+	syscall
+	// no return
+.size __thexit, .-__thexit
+
+.globl munmap
+.type munmap, @function
+munmap:
+	mov $23, %rax
+	syscall
+
+	mov $0x80000000, %ecx
+	test %ecx, %eax
+	jz munmap_ret
+
+	// negative return value; set errno
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+munmap_ret:
+	ret
+.size munmap, .-munmap
+
+.globl mprotect
+.type mprotect, @function
+mprotect:
+	mov $24, %rax
+	syscall
+
+	mov $0x80000000, %ecx
+	test %ecx, %eax
+	jz mprotect_ret
+
+	// negative return value; set errno
+	neg %eax
+	mov %eax, %fs:(0x18)
+	mov $-1, %eax
+
+mprotect_ret:
+	ret
+.size mprotect, .-mprotect

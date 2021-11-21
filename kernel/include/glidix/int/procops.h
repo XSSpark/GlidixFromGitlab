@@ -89,4 +89,19 @@ thid_t sys_pthread_self();
  */
 int sys_raise(int signo);
 
+/**
+ * Exit from the current userspace thread.
+ */
+void sys_thexit(thretval_t retval);
+
+/**
+ * Unmap address space. Returns 0 on success, or a negated error number on error.
+ */
+int sys_munmap(user_addr_t addr, size_t len);
+
+/**
+ * Set the protection on address space. Returns 0 on success, or a negated error number on error.
+ */
+int sys_mprotect(user_addr_t addr, size_t len, int prot);
+
 #endif

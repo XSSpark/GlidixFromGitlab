@@ -55,6 +55,11 @@
 typedef void (*KernelThreadFunc)(void *param);
 
 /**
+ * Thread return value.
+ */
+typedef uint64_t thretval_t;
+
+/**
  * Typedef all the structs here.
  */
 typedef	struct Thread_ Thread;
@@ -108,6 +113,11 @@ struct Thread_
 	int wakeCounter;
 
 	/**
+	 * This is set to 1 when the thread is detached.
+	 */
+	int isDetached;
+
+	/**
 	 * The stack pointer to return to. If this is NULL, it means the thread
 	 * terminated.
 	 */
@@ -157,6 +167,11 @@ struct Thread_
 	 * The thread ID (only applicable to userspace threads).
 	 */
 	thid_t thid;
+
+	/**
+	 * The thread return value. This is set before the thread fully terminates.
+	 */
+	thretval_t retval;
 };
 
 /**
@@ -218,9 +233,9 @@ void schedWake(Thread *thread);
 Thread* schedCreateKernelThread(KernelThreadFunc func, void *param, void *resv);
 
 /**
- * Exit the calling thread.
+ * Exit the calling thread, passing the specified value to the joiner (if applicable).
  */
-noreturn void schedExitThread();
+noreturn void schedExitThread(thretval_t retval);
 
 /**
  * Get the calling thread.
@@ -229,9 +244,11 @@ Thread* schedGetCurrentThread();
 
 /**
  * Wait for the specified kernel thread to terminate. This function takes ownership of the
- * thread structure, and so you must not use it again after this call.
+ * thread structure, and so you must not use it again after this call. Returns the value that
+ * the thread passed to `schedExitThread()`; if the thread exited by returning from its thread
+ * function, that value will be 0.
  */
-void schedJoinKernelThread(Thread *thread);
+thretval_t schedJoinKernelThread(Thread *thread);
 
 /**
  * Detach from the specified thread. This indicates that we will not be joining this thread,
@@ -304,5 +321,10 @@ int schedCheckSignals(ksiginfo_t *si);
  * Deliver a signal to a process.
  */
 void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si);
+
+/**
+ * Deliver a signal to a thread.
+ */
+void schedDeliverSignalToThread(Thread *thread, ksiginfo_t *si);
 
 #endif

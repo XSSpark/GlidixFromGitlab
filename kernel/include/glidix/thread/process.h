@@ -511,6 +511,16 @@ void procUnref(Process *proc);
 user_addr_t procMap(user_addr_t addr, size_t length, int prot, int flags, File *fp, off_t offset, errno_t *err);
 
 /**
+ * Unmap the specified address space. Returns 0 on success, or a negated error number on error.
+ */
+int procUnmap(user_addr_t addr, size_t len);
+
+/**
+ * Change the protection on a part of the address space.
+ */
+int procProtect(user_addr_t addr, size_t len, int prot);
+
+/**
  * Perform pre-exec cleanup.
  * 
  * Unmaps all userspace segments, resets signal dispositions, closes close-on-exec files, etc.
@@ -589,6 +599,11 @@ int procFileClose(int fd);
  * Exit the current process with the specified waitstatus. Use `PROC_WS_*()` macros to form the wait status.
  */
 noreturn void procExit(int wstatus);
+
+/**
+ * Exit from a userspace thread, setting the specified return value.
+ */
+noreturn void procExitThread(thretval_t retval);
 
 /**
  * Wait for a child process to terminate, and returns its PID. If `wstatus` is not NULL, then the child's wait

@@ -378,11 +378,12 @@ Thread* schedCreateKernelThread(KernelThreadFunc func, void *param, void *resv)
 	return thread;	
 };
 
-noreturn void schedExitThread()
+noreturn void schedExitThread(thretval_t retval)
 {
 	spinlockAcquire(&schedLock);
 	
 	Thread *currentThread = schedGetCurrentThread();
+	currentThread->retval = retval;
 	if (currentThread->joiner != NULL)
 	{
 		_schedWake(currentThread->joiner);
@@ -399,7 +400,7 @@ Thread* schedGetCurrentThread()
 	return cpuGetCurrent()->currentThread;
 };
 
-void schedJoinKernelThread(Thread *thread)
+thretval_t schedJoinKernelThread(Thread *thread)
 {
 	IrqState irqState = spinlockAcquire(&schedLock);
 
@@ -413,13 +414,17 @@ void schedJoinKernelThread(Thread *thread)
 	};
 
 	spinlockRelease(&schedLock, irqState);
+
+	thretval_t retval = thread->retval;
 	schedDestroyThread(thread);
+	return retval;
 };
 
 void schedDetachKernelThread(Thread *thread)
 {
 	IrqState irqState = spinlockAcquire(&schedLock);
 
+	thread->isDetached = 1;
 	if (thread->retstack == NULL)
 	{
 		// already exited
@@ -595,6 +600,12 @@ user_addr_t schedGetDefaultSignalAction(int signum)
 
 void schedDispatchSignal(kmcontext_gpr_t *gprs, FPURegs *fpuRegs, ksiginfo_t *siginfo)
 {
+	// for SIGTHKILL, special treatment: exit from the current userspace thread
+	if (siginfo->si_signo == SIGTHKILL)
+	{
+		procExitThread(0);
+	};
+
 	// get the signal disposition
 	SigAction act;
 	int status = schedSigAction(siginfo->si_signo, NULL, &act);
@@ -704,6 +715,12 @@ int schedCheckSignals(ksiginfo_t *si)
 
 void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si)
 {
+	if (si->si_signo == SIGTHKILL)
+	{
+		// ignore SIGTHKILL sent to a process
+		return;
+	};
+
 	IrqState irqState = spinlockAcquire(&schedLock);
 
 	ksigset_t mask = (1UL << si->si_signo);
@@ -735,4 +752,39 @@ void schedDeliverSignalToProc(Process *proc, ksiginfo_t *si)
 
 	spinlockRelease(&schedLock, irqState);
 	if (signalled) cpuInformProcSignalled(proc);
+};
+
+void schedDeliverSignalToThread(Thread *thread, ksiginfo_t *si)
+{
+	IrqState irqState = spinlockAcquire(&schedLock);
+
+	ksigset_t mask = (1UL << si->si_signo);
+	SigAction *act = &thread->proc->sigActions[si->si_signo];
+	user_addr_t handler = act->sa_sigaction_handler;
+	if (handler < 256 && thread->proc->pid == 1 && si->si_signo != SIGTHKILL)
+	{
+		// don't deliver signals to init which it doesn't handle
+		spinlockRelease(&schedLock, irqState);
+		return;
+	};
+	
+	if (handler == SIG_DFL) handler = schedGetDefaultSignalAction(si->si_signo);
+	if (handler == SIG_IGN)
+	{
+		// the signal is ignored, so there's no need to deliver it
+		spinlockRelease(&schedLock, irqState);
+		return;
+	};
+
+	// not ignored, so deliver unless already there
+	int signalled = 0;
+	if ((thread->sigPending & mask) == 0)
+	{
+		memcpy(&thread->sigInfo[si->si_signo], si, sizeof(ksiginfo_t));
+		thread->sigPending |= mask;
+		signalled = 1;
+	};
+
+	spinlockRelease(&schedLock, irqState);
+	if (signalled) cpuInformThreadSignalled(thread);
 };

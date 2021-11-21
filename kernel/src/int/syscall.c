@@ -63,6 +63,9 @@ void* _sysCallTable[] = {
 	sys_pthread_self,						// 19
 	sys_raise,							// 20
 	sys_mmap,							// 21
+	sys_thexit,							// 22
+	sys_munmap,							// 23
+	sys_mprotect,							// 24
 };
 
 /**
