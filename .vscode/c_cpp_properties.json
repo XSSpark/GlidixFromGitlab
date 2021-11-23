@@ -20,7 +20,8 @@
                 "-D__glidix__",
                 "-Werror",
                 "-O3",
-                "-nostdlib"
+                "-nostdlib",
+                "-D_GLIDIX_SOURCE"
             ]
         }
     ],

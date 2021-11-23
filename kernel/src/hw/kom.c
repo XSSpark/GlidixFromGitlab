@@ -452,7 +452,7 @@ void* komPhysToVirt(uint64_t phaddr)
 	return NULL;
 };
 
-static KOM_UserPageInfo* komGetUserPageInfo(void *ptr)
+KOM_UserPageInfo* komGetUserPageInfo(void *ptr)
 {
 	uint64_t addr = (uint64_t) ptr;
 

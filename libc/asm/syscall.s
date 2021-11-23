@@ -259,3 +259,19 @@ pthread_detach:
 	syscall
 	ret
 .size pthread_detach, .-pthread_detach
+
+.globl __thwait
+.type __thwait, @function
+__thwait:
+	mov $26, %rax
+	syscall
+	ret
+.size __thwait, .-__thwait
+
+.globl __thsignal
+.type __thsignal, @function
+__thsignal:
+	mov $27, %rax
+	syscall
+	ret
+.size __thsignal, .-__thsignal

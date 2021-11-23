@@ -34,6 +34,7 @@
 #include <glidix/int/procops.h>
 #include <glidix/int/fileops.h>
 #include <glidix/int/mman.h>
+#include <glidix/int/thwait.h>
 
 /**
  * The system call table. This must not be static, as it must be accessed by `syscall.asm`!
@@ -55,7 +56,7 @@ void* _sysCallTable[] = {
 	sys_getppid,							// 11
 	sys_waitpid,							// 12
 	sys_setsid,							// 13
-	sys_getsid,							// 14
+	sys_getsid,							// 14 TODO: implemented wrong (should take argument!)
 	sys_setpgid,							// 15
 	sys_getpgrp,							// 16
 	sys_kill,							// 17
@@ -67,6 +68,8 @@ void* _sysCallTable[] = {
 	sys_munmap,							// 23
 	sys_mprotect,							// 24
 	sys_pthread_detach,						// 25
+	sys_thwait,							// 26
+	sys_thsignal,							// 27
 };
 
 /**

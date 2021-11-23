@@ -26,14 +26,15 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <sys/call.h>
+#include <sys/gxthread.h>
 #include <semaphore.h>
 #include <errno.h>
 
 int sem_init(sem_t *sem, int pshared, unsigned value)
 {
-	(void)pshared;			/* semaphores are always suitable for sharing */
-	sem->__value = (int64_t) value;
+	// all Glidix semaphores are available for sharing
+	(void) pshared;
+	sem->__value = value;
 	return 0;
 };
 
@@ -46,74 +47,31 @@ int sem_wait(sem_t *sem)
 {
 	while (1)
 	{
-		int64_t value = sem->__value;
-		if (value == -1)
+		int64_t currentValue = sem->__value;
+		if (currentValue == 0)
 		{
-			// block
-			if (__syscall(__SYS_block_on, &sem->__value, value) != 0)
-			{
-				errno = EINVAL;
-				return -1;
-			};
-			
+			thwait(&sem->__value, THWAIT_NEQUALS, 0);
 			continue;
-		}
-		else if (value == 0)
-		{
-			// indicate that we are blocking
-			if (__sync_val_compare_and_swap(&sem->__value, 0, -1) != 0)
-			{
-				// atomic compare-and-swap failed, try again
-				continue;
-			};
-			
-			// block
-			if (__syscall(__SYS_block_on, &sem->__value, -1L) != 0)
-			{
-				errno = EINVAL;
-				return -1;
-			};
-			
-			continue;
-		}
-		else
-		{
-			if (__sync_val_compare_and_swap(&sem->__value, value, value-1) == value)
-			{
-				// yay! successfully got 1 resource
-				return 0;
-			};
 		};
+
+		if (__sync_val_compare_and_swap(&sem->__value, currentValue, currentValue-1) != currentValue)
+		{
+			continue;
+		};
+
+		return 0;
 	};
 };
 
 int sem_post(sem_t *sem)
 {
-	while (1)
+	if (__sync_fetch_and_add(&sem->__value, 1) == 0)
 	{
-		int64_t value = sem->__value;
-		if (value == -1)
-		{
-			// set to 1, and wake up any waiters if successful
-			if (__sync_val_compare_and_swap(&sem->__value, value, 1UL) == value)
-			{
-				if (__syscall(__SYS_unblock, &sem->__value) != 0)
-				{
-					errno = EINVAL;
-					return -1;
-				};
-				
-				return 0;
-			};
-		}
-		else
-		{
-			if (__sync_val_compare_and_swap(&sem->__value, value, value+1) == value)
-			{
-				return 0;
-			};
-		};
+		// wake up potentially waiting threads
+		thsignal(&sem->__value, 0);
 	};
+
+	return 0;
 };
 
 int sem_getvalue(sem_t *sem, int *valptr)

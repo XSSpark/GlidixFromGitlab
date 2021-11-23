@@ -26,7 +26,7 @@
 	OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <sys/call.h>
+#include <sys/gxthread.h>
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
@@ -101,15 +101,9 @@ int pthread_mutex_lock(pthread_mutex_t *mutex)
 	};
 	
 	uint64_t ticket = __sync_fetch_and_add(&mutex->__tickets, 1);
-	while (1)
+	while (mutex->__cakes != ticket)
 	{
-		uint64_t cakes = mutex->__cakes;
-		if (cakes == ticket)
-		{
-			break;
-		};
-		
-		uint64_t errnum = __syscall(__SYS_block_on, &mutex->__cakes, cakes);
+		int errnum = thwait(&mutex->__cakes, THWAIT_EQUALS, ticket);
 		if (errnum != 0)
 		{
 			return errnum;
@@ -165,7 +159,7 @@ int pthread_mutex_unlock(pthread_mutex_t *mutex)
 		__sync_fetch_and_add(&mutex->__cakes, 1);
 		if (mutex->__cakes != mutex->__tickets)
 		{
-			return __syscall(__SYS_unblock, &mutex->__cakes);
+			return __thsignal(&mutex->__cakes, mutex->__cakes);
 		};
 	};
 	

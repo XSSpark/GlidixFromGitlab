@@ -57,10 +57,10 @@
 #define	__SYS_munmap							23
 #define	__SYS_mprotect							24
 #define	__SYS_pthread_detach						25
+#define	__SYS_thwait							26
+#define	__SYS_thsignal							27
 
 // TODO
-#define	__SYS_block_on							255
-#define	__SYS_unblock							255
 #define	__SYS_sockerr							255
 #define	__SYS_utime							255
 #define	__SYS_getdent							255

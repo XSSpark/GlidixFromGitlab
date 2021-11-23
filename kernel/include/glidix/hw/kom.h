@@ -30,6 +30,7 @@
 #define __glidix_hw_kom_h
 
 #include <glidix/util/common.h>
+#include <glidix/thread/spinlock.h>
 
 /**
  * Types of pools.
@@ -102,6 +103,16 @@ typedef struct
 	 * Reference count for this page.
 	 */
 	uint64_t refcount;
+
+	/**
+	 * Spinlock protecting the blocker list.
+	 */
+	Spinlock blockerLock;
+
+	/**
+	 * The blocker list.
+	 */
+	void *blockerList;
 } KOM_UserPageInfo;
 
 /**
@@ -166,6 +177,11 @@ void* komAllocVirtual(size_t size);
  * Returns NULL if the virtual address could not be found.
  */
 void* komPhysToVirt(uint64_t phaddr);
+
+/**
+ * Get user page information for the specified pointer.
+ */
+KOM_UserPageInfo* komGetUserPageInfo(void *ptr);
 
 /**
  * Allocate a user page, initially with a refcount of 1. Returns NULL if we have run out of

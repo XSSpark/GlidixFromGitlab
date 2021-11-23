@@ -43,9 +43,8 @@ typedef struct
 	/**
 	 * Current value of the semaphore.
 	 */
-	volatile int64_t					__value;
+	volatile uint64_t __value;
 } sem_t;
-
 
 int	sem_init(sem_t *sem, int pshared, unsigned value);
 int	sem_destroy(sem_t *sem);

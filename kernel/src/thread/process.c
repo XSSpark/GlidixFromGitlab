@@ -1651,3 +1651,23 @@ errno_t procDetachThread(thid_t thid)
 	mutexUnlock(&proc->threadTableLock);
 	return 0;
 };
+
+void* procGetUserPage(user_addr_t addr, int faultFlags)
+{
+	Process *proc = schedGetCurrentThread()->proc;
+
+	mutexLock(&proc->mapLock);
+	int result = _procPageFault(addr, faultFlags, NULL);
+	if (result != 0)
+	{
+		mutexUnlock(&proc->mapLock);
+		return NULL;
+	};
+
+	void *page = komPhysToVirt(pagetabGetPhys((void*) (addr & ~0xFFFUL)));
+	ASSERT(page != NULL);
+	komUserPageDup(page);
+
+	mutexUnlock(&proc->mapLock);
+	return page;
+};

@@ -29,6 +29,11 @@
 #ifndef _SYS_GXTHREAD_H
 #define	_SYS_GXTHREAD_H
 
+#include <stdint.h>
+
+#define	__THWAIT_EQUALS							0
+#define	__THWAIT_NEQUALS						1
+
 /**
  * Represents a thread ID (equivalent to `pthread_t`).
  */
@@ -40,9 +45,37 @@ typedef int __thid_t;
  */
 _Noreturn void __thexit(void *retval);
 
+/**
+ * Wait for the value pointed to be `ptr` to equal `expectedValue`. Before calling,
+ * check if `ptr` already points to `expectedValue`. Make sure that whenever the value
+ * at `ptr` is changed, `__thsignal()` is called to notify any threads blocking on
+ * this value. Returns 0 on success, or an error number on error. This function can
+ * return false positives; i.e. a 0 when `ptr` still does not equal `expectedValue`
+ * (this can be due to a race or due to being interrupted by signals); so you have to
+ * call it in a loop, checking the condition every time. The following errors are possible:
+ * 
+ * `EINVAL` - the address is not aligned
+ * `EFAULT` - the address is not mapped as read/write
+ */
+int __thwait(volatile uint64_t *ptr, int op, uint64_t expectedValue);
+
+/**
+ * Inform any threads waiting on `ptr` to equal `newValue`, that the change has been made.
+ * Call function after you've actually set it to `newValue`! Returns 0 on success, or an
+ * error number on error; the following errors are possible:
+ * 
+ * `EINVAL` - the address is not aligned
+ * `EFAULT` - the address is not mapped as read/write
+ */
+int __thsignal(volatile uint64_t *ptr, uint64_t newValue);
+
 #ifdef _GLIDIX_SOURCE
 #define	thexit __thexit
 #define	thid_t __thid_t
+#define	thwait __thwait
+#define	thsignal __thsignal
+#define	THWAIT_EQUALS __THWAIT_EQUALS
+#define	THWAIT_NEQUALS __THWAIT_NEQUALS
 #endif
 
 #endif

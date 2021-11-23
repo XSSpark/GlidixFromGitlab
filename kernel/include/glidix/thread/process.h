@@ -639,4 +639,11 @@ int procKill(pid_t pid, int signo);
  */
 errno_t procDetachThread(thid_t thid);
 
+/**
+ * Return (and upref) the canonical pointer to the specified user address (the pointer points to the START of
+ * the page!). The `faultFlags` are bitwise-OR of one or more page fault flags, specifying what access is required
+ * to the page. Returns NULL if access was not granted. Remember to unref the page once done.
+ */
+void* procGetUserPage(user_addr_t addr, int faultFlags);
+
 #endif
